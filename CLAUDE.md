@@ -20,7 +20,7 @@ HTTP Request → Express Route → Job Queue (FIFO) → claude -p (spawned proce
 ```
 
 - **Entry point:** `server.mjs` — Express app, route mounting, graceful shutdown
-- **Config:** `src/config.mjs` — all via env vars (BRIDGE_PORT, MAX_PARALLEL, TIMEOUT_MS, WORKSPACE, CLAUDE_PATH, LOG_LEVEL)
+- **Config:** `src/config.mjs` — all via env vars (BRIDGE_PORT, BIND_HOST, API_KEY, MAX_PARALLEL, TIMEOUT_MS, WORKSPACE, CLAUDE_PATH, LOG_LEVEL, DEFAULT_ALLOWED_TOOLS, DEFAULT_MAX_TURNS, MAX_QUEUE_SIZE, JOB_TTL_MS)
 - **Queue:** `src/queue.mjs` — in-memory Map, FIFO scheduling, respects MAX_PARALLEL concurrency limit
 - **Runner:** `src/claude-runner.mjs` — spawns `claude -p <prompt> --no-session-persistence`, handles timeout (SIGTERM→SIGKILL after 5s), 10MB buffer limit
 - **Routes:** `src/routes/*.mjs` — one file per endpoint
@@ -28,16 +28,43 @@ HTTP Request → Express Route → Job Queue (FIFO) → claude -p (spawned proce
 
 ## API Endpoints
 
+### Core
+
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/ask` | Submit task (async), returns taskId immediately |
 | POST | `/ask/sync` | Submit task (sync), waits for result |
 | GET | `/status/:taskId` | Get task status and result |
+| GET | `/progress` | Real-time progress for all running tasks |
 | GET | `/jobs` | List jobs (filter by ?status, ?agentId, ?limit) |
 | POST | `/cancel/:taskId` | Cancel queued or running task |
 | GET | `/health` | Server health + queue stats |
 | POST | `/chain` | Submit multi-step sequential pipeline |
 | GET | `/chain/:chainId` | Check chain progress |
+
+### Dashboard API
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/dashboard/agents` | Agent status derived from queue jobs |
+| GET | `/api/dashboard/chains` | Active/recent chain status |
+| GET | `/api/dashboard/timeline` | Recent events (ring buffer, 100 entries) |
+| GET | `/api/dashboard/worklog` | Completed job history |
+| GET | `/api/dashboard/leaderboard` | Per-agent performance rankings |
+| GET | `/api/dashboard/stream` | SSE endpoint for real-time dashboard updates |
+
+### Chat Commander API
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/chat/send` | Send message, auto-detect intent, spawn agents |
+| POST | `/api/chat/upload` | Upload files (images, docs, code — 50MB max) |
+| GET | `/api/chat/conversations` | List all conversations |
+| GET | `/api/chat/conversations/:id` | Get single conversation with messages |
+| DELETE | `/api/chat/conversations/:id` | Delete a conversation |
+| GET | `/api/chat/files` | List uploaded files |
+| GET | `/api/chat/stream/:conversationId` | SSE for real-time agent updates |
+| GET | `/api/chat/uploads/:filename` | Serve uploaded files |
 
 ## Job Lifecycle
 
@@ -91,21 +118,40 @@ All tests are bash scripts using curl + python3 for JSON parsing. Total: 119 ass
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `BRIDGE_PORT` | `3210` | HTTP server port |
+| `BIND_HOST` | `127.0.0.1` | Network interface to bind to |
+| `API_KEY` | _(none)_ | API key for auth (disabled if unset) |
 | `MAX_PARALLEL` | `4` | Max concurrent claude processes |
 | `TIMEOUT_MS` | `600000` | Per-task timeout (10 min) |
 | `WORKSPACE` | `./workspace` | Root directory for all files |
 | `CLAUDE_PATH` | `claude` | Path to claude CLI binary |
 | `LOG_LEVEL` | `info` | debug, info, warn, error |
+| `DEFAULT_ALLOWED_TOOLS` | _(none)_ | Default tools for all tasks (comma-separated or `all`) |
+| `DEFAULT_MAX_TURNS` | `0` | Default max agentic turns (0 = unlimited) |
+| `MAX_QUEUE_SIZE` | `1000` | Max jobs in queue |
+| `JOB_TTL_MS` | `3600000` | Job time-to-live (1 hour) |
 
 ## Workspace Layout
 
 ```
 workspace/
-├── tasks/      # Saved prompts (task-{id}.md)
-├── results/    # Claude output (result-{id}.md)
-├── contexts/   # Temp context files (context-{id}.md)
-└── shared/     # Shared documents between agents
+├── tasks/           # Saved prompts (task-{id}.md)
+├── results/         # Claude output (result-{id}.md)
+├── contexts/        # Temp context files (context-{id}.md)
+├── shared/          # Shared documents between agents
+├── uploads/         # Files uploaded via Chat Commander
+└── conversations/   # Chat conversation JSON files
 ```
+
+## Chat Commander
+
+Accessible at `/chat`. A conversational interface that auto-routes requests to specialized agent teams.
+
+- **Intent detection** — analyzes message keywords and attached files to select an agent pattern (bug-report, implementation, review, bugfix, design, documentation, research, general)
+- **Agent routing** — spawns single agents, sequential chains, or parallel teams based on intent
+- **File upload** — supports images, docs, code files (50MB max, filtered extensions)
+- **Conversation history** — persisted as JSON in `workspace/conversations/`
+- **Real-time updates** — SSE stream per conversation for live agent status and messages
+- **Image analysis** — if images are attached with a bug report, an image-analyzer agent runs first
 
 ## Workflow Rules — ALWAYS FOLLOW
 

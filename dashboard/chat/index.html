@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat Commander — Claude Bridge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/chat.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <div class="header-logo">
+        <span class="logo-dot"></span>
+        <span class="header-title">Chat Commander</span>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="mode-switch">
+        <button class="mode-btn active" data-mode="chat">Chat</button>
+        <button class="mode-btn" data-mode="team">Team</button>
+      </div>
+    </div>
+    <div class="header-right">
+      <a href="/dashboard/" class="header-btn" title="Dashboard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      </a>
+      <button class="header-btn" id="toggleAgentPanel" title="Toggle agent panel">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </button>
+      <button class="header-btn" id="settingsBtn" title="Settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Layout -->
+  <div class="app-layout">
+    <!-- Left Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-tabs">
+        <button class="sidebar-tab active" data-tab="conversations">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Chats
+        </button>
+        <button class="sidebar-tab" data-tab="files">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+          Files
+        </button>
+      </div>
+
+      <!-- Conversations Tab -->
+      <div class="sidebar-content" id="tab-conversations">
+        <div class="sidebar-search">
+          <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="search-input" id="searchConversations" placeholder="Search conversations...">
+        </div>
+        <button class="new-chat-btn" id="newChatBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Chat
+        </button>
+        <div class="conversation-list" id="conversationList">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Files Tab -->
+      <div class="sidebar-content hidden" id="tab-files">
+        <div class="sidebar-search">
+          <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="search-input" id="searchFiles" placeholder="Search files...">
+        </div>
+        <div class="file-list" id="fileList">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Chat Area -->
+    <main class="chat-main" id="chatMain">
+      <!-- Drop overlay -->
+      <div class="drop-overlay" id="dropOverlay">
+        <div class="drop-overlay-content">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f36f20" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p>Drop files here to upload</p>
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div class="chat-messages" id="chatMessages">
+        <div class="welcome-screen" id="welcomeScreen">
+          <div class="welcome-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f36f20" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <h2 class="welcome-title">Chat Commander</h2>
+          <p class="welcome-sub">Send a message to get started. I'll route your request to the right agent team.</p>
+          <div class="welcome-hints">
+            <button class="hint-chip" data-hint="Implement a login page with OAuth support">"Implement a login page"</button>
+            <button class="hint-chip" data-hint="Review the security of the authentication module">"Review security"</button>
+            <button class="hint-chip" data-hint="Fix the bug in the queue processing logic">"Fix a bug"</button>
+            <button class="hint-chip" data-hint="Explain how the chain execution works">"Explain chain execution"</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Typing indicator -->
+      <div class="typing-indicator hidden" id="typingIndicator">
+        <div class="typing-avatar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        </div>
+        <div class="typing-dots">
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+        </div>
+        <span class="typing-label">Agents are working...</span>
+      </div>
+
+      <!-- File preview area -->
+      <div class="file-preview-bar hidden" id="filePreviewBar">
+        <div class="file-previews" id="filePreviews"></div>
+      </div>
+
+      <!-- Input Area -->
+      <div class="chat-input-area">
+        <div class="input-wrapper">
+          <button class="attach-btn" id="attachBtn" title="Attach files">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <textarea class="chat-input" id="chatInput" placeholder="Type your message... (Enter to send, Shift+Enter for newline)" rows="1"></textarea>
+          <button class="send-btn" id="sendBtn" title="Send message" disabled>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9"/></svg>
+          </button>
+        </div>
+        <input type="file" id="fileInput" multiple hidden accept="image/*,.md,.txt,.pdf,.js,.mjs,.py,.ts,.tsx,.jsx,.go,.rs,.java,.c,.cpp,.h,.css,.html,.json,.yaml,.yml,.sh">
+      </div>
+    </main>
+
+    <!-- Right Agent Panel -->
+    <aside class="agent-panel" id="agentPanel">
+      <div class="agent-panel-header">
+        <h3 class="agent-panel-title">Agent Activity</h3>
+        <button class="agent-panel-close" id="closeAgentPanel">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="agent-panel-content" id="agentPanelContent">
+        <div class="agent-idle">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          <p>No active agents</p>
+          <span>Send a message to start working</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script type="module" src="js/chat-app.mjs"></script>
+</body>
+</html>

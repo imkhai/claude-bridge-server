@@ -1,6 +1,6 @@
 # Claude Bridge Server
 
-HTTP bridge between AI agents and [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code). Submit tasks via HTTP, get results back — with job queuing, concurrency control, multi-step chains, and multi-agent team workflows.
+HTTP bridge between AI agents and [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code). Submit tasks via HTTP, get results back — with job queuing, concurrency control, multi-step chains, multi-agent team workflows, a visual dashboard, and a chat interface.
 
 ```
   Agent-1  Agent-2  Agent-3  ...  Agent-N

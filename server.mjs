@@ -15,6 +15,7 @@ import { healthRouter } from './src/routes/health.mjs';
 import { cancelRouter } from './src/routes/cancel.mjs';
 import { chainRouter } from './src/routes/chain.mjs';
 import { dashboardRouter } from './src/routes/dashboard-api.mjs';
+import { chatRouter } from './src/routes/chat-api.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -37,6 +38,9 @@ app.use((req, res, next) => {
 // Dashboard static files and API (before auth middleware for static assets)
 app.use('/dashboard', express.static(join(__dirname, 'dashboard')));
 
+// Chat Commander static files
+app.use('/chat', express.static(join(__dirname, 'dashboard', 'chat')));
+
 // Redirect root to dashboard for browser requests
 app.get('/', (req, res, next) => {
   if (req.headers.accept && req.headers.accept.includes('text/html')) {
@@ -52,6 +56,7 @@ app.use(healthRouter);
 app.use(cancelRouter);
 app.use(chainRouter);
 app.use(dashboardRouter);
+app.use(chatRouter);
 
 // Global error handler — never expose internal error details
 app.use((err, req, res, next) => {
