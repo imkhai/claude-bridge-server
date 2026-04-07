@@ -13,6 +13,10 @@ export const chainRouter = Router();
 const chains = new Map();
 const MAX_CHAINS = 500;
 
+export function getChains() {
+  return chains;
+}
+
 chainRouter.post('/chain', (req, res) => {
   const { steps } = req.body;
 

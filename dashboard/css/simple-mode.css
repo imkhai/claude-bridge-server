@@ -1,0 +1,543 @@
+/* Simple Mode — Terminal Aesthetic */
+
+/* ── Terminal wrapper ── */
+.terminal-wrapper {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.terminal-content {
+  height: 100%;
+  overflow-y: auto;
+  padding: 12px 16px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Scanline effect ── */
+.terminal-scanline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 255, 0, 0.015) 2px,
+    rgba(0, 255, 0, 0.015) 4px
+  );
+  animation: scanline-scroll 8s linear infinite;
+}
+
+.terminal-scanline::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(63, 185, 80, 0.06);
+  animation: scanline-beam 4s linear infinite;
+}
+
+@keyframes scanline-scroll {
+  from { background-position: 0 0; }
+  to { background-position: 0 100px; }
+}
+
+@keyframes scanline-beam {
+  0% { top: -3px; }
+  100% { top: 100%; }
+}
+
+/* ── Header section ── */
+.terminal-header {
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.term-title {
+  color: var(--green);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 2px;
+}
+
+.term-subtitle {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.term-uptime {
+  float: right;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.term-info {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* ── Divider ── */
+.terminal-divider {
+  border-top: 1px solid var(--border);
+  margin: 6px 0;
+}
+
+/* ── Section titles ── */
+.terminal-section-title {
+  color: var(--green);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  margin-bottom: 4px;
+  margin-top: 10px;
+}
+
+.terminal-section-title::before {
+  content: '─── ';
+  color: var(--border);
+}
+
+.terminal-section-title::after {
+  content: ' ───────────────────────────────────────────────────────';
+  color: var(--border);
+}
+
+/* ── Agent table (box-drawing) ── */
+.term-table {
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.term-table-header {
+  color: var(--text-muted);
+}
+
+.term-table-footer {
+  color: var(--text-muted);
+}
+
+.term-row {
+  transition: background 0.15s ease;
+}
+
+.term-row:hover {
+  background: rgba(63, 185, 80, 0.05);
+}
+
+/* ── Status indicators ── */
+.si-active {
+  color: var(--green);
+  animation: blink-anim 1s step-end infinite;
+}
+
+.si-done {
+  color: var(--green);
+}
+
+.si-queued {
+  color: var(--yellow);
+}
+
+.si-idle {
+  color: var(--text-muted);
+}
+
+.si-error {
+  color: var(--red);
+}
+
+/* Blinking cursor for active agents */
+.blink {
+  animation: blink-anim 1s step-end infinite;
+}
+
+@keyframes blink-anim {
+  50% { opacity: 0; }
+}
+
+/* ── Queue stats ── */
+.queue-line {
+  font-size: 12px;
+  margin-bottom: 2px;
+  color: var(--text-secondary);
+  white-space: pre;
+}
+
+.bar-filled {
+  color: var(--green);
+}
+
+.bar-empty {
+  color: var(--text-muted);
+  opacity: 0.4;
+}
+
+.queue-val {
+  color: var(--text-primary);
+}
+
+/* ── Chain progress ── */
+.chain-block {
+  margin-bottom: 12px;
+}
+
+.chain-id {
+  color: var(--violet);
+  font-weight: 700;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.chain-progress-bar {
+  font-size: 12px;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+.chain-step-line {
+  font-size: 12px;
+  white-space: pre;
+  padding: 1px 0;
+  transition: color 0.2s ease;
+}
+
+.chain-step-line.step-done { color: var(--green); }
+.chain-step-line.step-running { color: var(--yellow); }
+.chain-step-line.step-pending { color: var(--text-muted); }
+.chain-step-line.step-error { color: var(--red); }
+.chain-step-line.step-cancelled { color: var(--text-muted); }
+
+.step-done { color: var(--green); }
+.step-running { color: var(--yellow); animation: blink-anim 1s step-end infinite; }
+.step-pending { color: var(--text-muted); }
+.step-error { color: var(--red); }
+
+/* ── Columns layout (queue + timeline side by side) ── */
+.terminal-columns {
+  display: flex;
+  gap: 24px;
+  margin-top: 4px;
+}
+
+.terminal-col-queue {
+  flex: 0 0 280px;
+}
+
+.terminal-col-timeline {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Timeline ── */
+.timeline-row {
+  font-size: 12px;
+  padding: 1px 0;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.2s ease;
+}
+
+.timeline-row:first-child {
+  animation: timeline-flash 0.5s ease-out;
+}
+
+@keyframes timeline-flash {
+  0% { background: rgba(63, 185, 80, 0.15); }
+  100% { background: transparent; }
+}
+
+.tl-time {
+  color: var(--text-muted);
+}
+
+.tl-agent {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.tl-label {
+  color: var(--text-secondary);
+}
+
+.tl-details {
+  color: var(--text-muted);
+}
+
+/* Event-specific icon colors */
+.evt-icon { display: inline-block; width: 14px; text-align: center; }
+.evt-done { color: var(--green); }
+.evt-started { color: var(--yellow); }
+.evt-created { color: var(--blue); }
+.evt-error { color: var(--red); }
+.evt-timeout { color: var(--orange); }
+.evt-cancelled { color: var(--text-muted); }
+
+/* Timeline row type highlights */
+.timeline-row.evt-task_error { color: var(--red); }
+.timeline-row.evt-task_timeout { color: var(--orange); }
+
+/* ── Worklog History ── */
+.wl-agent-block {
+  margin-bottom: 8px;
+}
+
+.wl-agent-header {
+  font-size: 12px;
+  cursor: pointer;
+  padding: 3px 0;
+  user-select: none;
+  white-space: pre;
+}
+
+.wl-agent-header:hover {
+  background: rgba(63, 185, 80, 0.05);
+}
+
+.wl-toggle {
+  color: var(--text-muted);
+  display: inline-block;
+  width: 12px;
+}
+
+.wl-agent-stats {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.wl-entry {
+  font-size: 12px;
+  white-space: pre;
+  padding: 1px 0;
+  padding-left: 16px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.15s ease;
+}
+
+.wl-entry:hover {
+  background: rgba(63, 185, 80, 0.05);
+}
+
+.wl-entry.status-done { color: var(--text-secondary); }
+.wl-entry.status-error { color: var(--red); }
+.wl-entry.status-timeout { color: var(--orange); }
+
+.wl-icon {
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+}
+
+.wl-done { color: var(--green); }
+.wl-error { color: var(--red); }
+.wl-timeout { color: var(--orange); }
+
+.wl-id {
+  color: var(--text-muted);
+}
+
+.wl-status {
+  color: inherit;
+  font-weight: 600;
+}
+
+.wl-dur {
+  color: var(--text-muted);
+}
+
+.wl-time {
+  color: var(--text-muted);
+}
+
+.wl-prompt {
+  color: var(--text-secondary);
+}
+
+/* ── Leaderboard ── */
+.lb-trophies {
+  font-size: 13px;
+  margin-bottom: 4px;
+  letter-spacing: 1px;
+}
+
+.lb-podium {
+  font-size: 12px;
+  margin-bottom: 6px;
+  padding: 2px 0;
+}
+
+.trophy-gold { color: #ffd700; }
+.trophy-silver { color: #c0c0c0; }
+.trophy-bronze { color: #cd7f32; }
+
+.lb-table {
+  margin-top: 2px;
+}
+
+.lb-top {
+  background: rgba(255, 215, 0, 0.06) !important;
+  color: #ffd700;
+}
+
+/* ── Footer ── */
+.terminal-footer {
+  margin-top: 12px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.term-footer-keys span {
+  margin-right: 8px;
+}
+
+.term-footer-time {
+  color: var(--text-secondary);
+}
+
+/* ── Empty state ── */
+.term-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .terminal-columns {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .terminal-col-queue {
+    flex: none;
+  }
+
+  .term-table {
+    font-size: 11px;
+  }
+}
+
+@media (min-width: 600px) {
+  .terminal-content {
+    padding: 16px 24px;
+  }
+}
+
+/* ── Status row highlights ── */
+.term-row.status-active {
+  color: var(--green);
+}
+
+.term-row.status-error {
+  color: var(--red);
+}
+
+.term-row.status-timeout {
+  color: var(--orange);
+}
+
+.term-row.status-queued {
+  color: var(--yellow);
+}
+
+.term-row.status-idle {
+  color: var(--text-muted);
+}
+
+.term-row.status-done {
+  color: var(--text-secondary);
+}
+
+/* ── Legacy panel compatibility ── */
+/* Keep old panel styles for real-mode timeline overlay */
+.agent-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.agent-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 400;
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.agent-table td {
+  padding: 3px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+}
+
+/* Old status indicators (for real-mode overlay) */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.status-active .status-dot { background: var(--green); }
+.status-idle .status-dot { background: var(--text-muted); }
+.status-error .status-dot { background: var(--red); }
+.status-timeout .status-dot { background: var(--yellow); }
+.status-queued .status-dot { background: var(--blue); }
+.status-done .status-dot { background: var(--green); }
+
+.status-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Timeline entry (real-mode overlay) */
+.timeline-entry {
+  font-size: 12px;
+  padding: 1px 0;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-entry .time { color: var(--text-muted); margin-right: 6px; }
+.timeline-entry .icon { margin-right: 4px; }
+.timeline-entry.evt-task_done .icon { color: var(--green); }
+.timeline-entry.evt-task_started .icon { color: var(--yellow); }
+.timeline-entry.evt-task_queued .icon { color: var(--blue); }
+.timeline-entry.evt-task_error .icon { color: var(--red); }
+.timeline-entry.evt-task_timeout .icon { color: var(--orange); }
+.timeline-entry.evt-task_cancelled .icon { color: var(--text-muted); }
+
+.empty-state {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 8px 0;
+  font-size: 12px;
+}

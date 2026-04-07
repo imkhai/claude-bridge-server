@@ -4,6 +4,19 @@ import { logger } from './utils/logger.mjs';
 
 const MAX_BUFFER = 10 * 1024 * 1024; // 10MB
 const processes = new Map();
+const progressMap = new Map(); // taskId -> { outputBytes, lastActivity, stderrLines }
+
+export function getProgress(taskId) {
+  return progressMap.get(taskId) || null;
+}
+
+export function getAllProgress() {
+  const result = {};
+  for (const [taskId, p] of progressMap) {
+    result[taskId] = { ...p };
+  }
+  return result;
+}
 
 class ClaudeProcessError extends Error {
   constructor(type, message, exitCode, stderr) {
@@ -88,6 +101,12 @@ export function runClaude({ prompt, contextFile, workingDir, taskId, agentId, al
     });
 
     processes.set(taskId, proc);
+    progressMap.set(taskId, {
+      outputBytes: 0,
+      stderrLines: [],
+      lastActivity: Date.now(),
+      startedAt: Date.now(),
+    });
 
     let stdout = '';
     let stderr = '';
@@ -115,15 +134,32 @@ export function runClaude({ prompt, contextFile, workingDir, taskId, agentId, al
         return;
       }
       stdout += chunk;
+      const prog = progressMap.get(taskId);
+      if (prog) {
+        prog.outputBytes = bufferSize;
+        prog.lastActivity = Date.now();
+      }
     });
 
     proc.stderr.on('data', (chunk) => {
       stderr += chunk;
+      const prog = progressMap.get(taskId);
+      if (prog) {
+        prog.lastActivity = Date.now();
+        // Keep last 5 stderr lines as progress hints
+        const lines = chunk.toString().split('\n').filter(l => l.trim());
+        for (const line of lines) {
+          prog.stderrLines.push(line.trim());
+          if (prog.stderrLines.length > 5) prog.stderrLines.shift();
+        }
+      }
     });
 
     proc.on('close', (code) => {
       clearTimeout(timer);
       processes.delete(taskId);
+      // Keep progress for 60s after completion, then clean up
+      setTimeout(() => progressMap.delete(taskId), 60000);
 
       if (killed && bufferSize > MAX_BUFFER) {
         reject(new ClaudeProcessError('error', 'Buffer limit exceeded', code, stderr));

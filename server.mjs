@@ -1,4 +1,6 @@
 import express from 'express';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { config } from './src/config.mjs';
 import { logger } from './src/utils/logger.mjs';
 import { ensureDirectories } from './src/utils/file-manager.mjs';
@@ -12,6 +14,9 @@ import { jobsRouter } from './src/routes/jobs.mjs';
 import { healthRouter } from './src/routes/health.mjs';
 import { cancelRouter } from './src/routes/cancel.mjs';
 import { chainRouter } from './src/routes/chain.mjs';
+import { dashboardRouter } from './src/routes/dashboard-api.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
@@ -29,12 +34,24 @@ app.use((req, res, next) => {
   next();
 });
 
+// Dashboard static files and API (before auth middleware for static assets)
+app.use('/dashboard', express.static(join(__dirname, 'dashboard')));
+
+// Redirect root to dashboard for browser requests
+app.get('/', (req, res, next) => {
+  if (req.headers.accept && req.headers.accept.includes('text/html')) {
+    return res.redirect('/dashboard');
+  }
+  next();
+});
+
 app.use(askRouter);
 app.use(statusRouter);
 app.use(jobsRouter);
 app.use(healthRouter);
 app.use(cancelRouter);
 app.use(chainRouter);
+app.use(dashboardRouter);
 
 // Global error handler — never expose internal error details
 app.use((err, req, res, next) => {

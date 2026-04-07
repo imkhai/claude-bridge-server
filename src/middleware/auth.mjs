@@ -3,8 +3,9 @@ import { config } from '../config.mjs';
 import { logger } from '../utils/logger.mjs';
 
 export function authMiddleware(req, res, next) {
-  // Skip auth for health checks
+  // Skip auth for health checks and dashboard
   if (req.path === '/health') return next();
+  if (req.path.startsWith('/dashboard') || req.path.startsWith('/api/dashboard')) return next();
 
   // If no API_KEY configured, allow all (local dev mode)
   if (!config.API_KEY) return next();

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Bridge — Agent Dashboard</title>
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/simple-mode.css">
+  <link rel="stylesheet" href="css/real-mode.css">
+  <script src="https://cdn.jsdelivr.net/npm/pixi.js@8/dist/pixi.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <header id="header">
+      <div class="header-left">
+        <span class="header-title">CLAUDE BRIDGE</span>
+        <span class="connection-dot connecting" id="connection-status" title="Connecting"></span>
+        <span class="connection-label" id="connection-label">Connecting...</span>
+        <span class="header-uptime" id="header-uptime">uptime: --</span>
+      </div>
+      <div class="header-right">
+        <span class="header-workers" id="header-workers">Workers: -/- | Queue: -</span>
+        <button class="mode-btn" id="mode-toggle-real" title="Real Mode (1)">Real</button>
+        <button class="mode-btn active" id="mode-toggle-simple" title="Simple Mode (2)">Simple</button>
+        <button class="mode-btn" id="fullscreen-btn" title="Fullscreen (f)">&#x26F6;</button>
+      </div>
+    </header>
+    <main id="main">
+      <div id="simple-mode" class="mode-container active">
+        <!-- Terminal UI is rendered dynamically by js/simple/terminal.mjs -->
+      </div>
+      <div id="real-mode" class="mode-container">
+        <canvas id="office-canvas"></canvas>
+        <div id="real-overlay">
+          <div id="real-timeline"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script type="module" src="js/app.mjs"></script>
+</body>
+</html>

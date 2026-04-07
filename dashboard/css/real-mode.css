@@ -1,0 +1,403 @@
+/* Real Mode — PixiJS Canvas styles */
+
+#real-mode {
+  background: #0a0a0f;
+}
+
+#real-mode.active {
+  display: block;
+  height: 100%;
+  position: relative;
+}
+
+/* Canvas container — centered, responsive */
+#office-canvas {
+  display: block;
+  margin: 0 auto;
+  background: #0a0a0f;
+}
+
+#real-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 80px;
+  background: rgba(10, 10, 15, 0.92);
+  border-top: 1px solid var(--border);
+  padding: 6px 16px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  z-index: 5;
+}
+
+#real-timeline .timeline-entry {
+  font-size: 11px;
+  padding: 1px 0;
+  color: var(--text-secondary);
+}
+
+#real-timeline .timeline-entry .time {
+  color: var(--text-muted);
+  margin-right: 6px;
+}
+
+/* ── Detail Panel (slide-in from right with spring) ── */
+
+.detail-panel {
+  position: absolute;
+  top: 0;
+  right: -340px;
+  width: 320px;
+  height: calc(100% - 80px);
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  padding: 20px 16px 16px;
+  overflow-y: auto;
+  z-index: 20;
+  transition: right 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+}
+
+.detail-panel.open {
+  right: 0;
+}
+
+.detail-panel .close-btn {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.detail-panel .close-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+/* Avatar mini circle */
+.detail-panel .detail-avatar-mini {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.detail-panel .detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-right: 24px;
+}
+
+.detail-panel .detail-header-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.detail-panel .detail-color-badge {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.detail-panel h3 {
+  font-size: 14px;
+  margin: 0;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+/* Status bar with dot + label */
+.detail-panel .detail-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 14px;
+}
+
+.detail-panel .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.detail-panel .status-dot-active {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.detail-panel .status-dot-idle {
+  background: var(--text-muted);
+}
+
+.detail-panel .status-dot-error,
+.detail-panel .status-dot-timeout {
+  background: var(--red);
+  box-shadow: 0 0 6px var(--red);
+}
+
+.detail-panel .status-dot-queued {
+  background: var(--yellow);
+}
+
+.detail-panel .status-dot-done {
+  background: var(--cyan);
+}
+
+.detail-panel .status-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.detail-panel .status-label.status-active { color: var(--green); }
+.detail-panel .status-label.status-error,
+.detail-panel .status-label.status-timeout { color: var(--red); }
+.detail-panel .status-label.status-queued { color: var(--yellow); }
+.detail-panel .status-label.status-done { color: var(--cyan); }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.2); }
+}
+
+/* Sections */
+.detail-panel .detail-section {
+  margin-bottom: 14px;
+}
+
+.detail-panel .detail-row {
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.detail-panel .detail-label {
+  color: var(--text-muted);
+  display: block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 3px;
+}
+
+.detail-panel .detail-value {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.detail-panel .detail-value.status-active { color: var(--green); }
+.detail-panel .detail-value.status-error,
+.detail-panel .detail-value.status-timeout { color: var(--red); }
+.detail-panel .detail-value.status-queued { color: var(--yellow); }
+.detail-panel .detail-value.status-done { color: var(--cyan); }
+
+/* Progress bar */
+.detail-panel .detail-progress-bar {
+  position: relative;
+  height: 20px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-top: 4px;
+  overflow: hidden;
+  display: none;
+}
+
+.detail-panel .detail-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 3px;
+  opacity: 0.3;
+  transition: width 0.5s ease-out;
+}
+
+.detail-panel .detail-progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 9px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.detail-panel .prompt-text {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+  font-size: 11px;
+  max-height: 180px;
+  overflow-y: auto;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+/* History — expandable entries */
+.detail-panel .detail-history {
+  margin-top: 4px;
+}
+
+.detail-panel .history-entry {
+  display: flex;
+  flex-direction: column;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.detail-panel .history-entry:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.detail-panel .history-entry:last-child {
+  border-bottom: none;
+}
+
+.detail-panel .history-entry-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-panel .history-entry-detail {
+  max-height: 0;
+  overflow: hidden;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: 0;
+  transition: max-height 0.25s ease, margin-top 0.25s ease;
+}
+
+.detail-panel .history-entry.expanded .history-entry-detail {
+  max-height: 80px;
+  margin-top: 4px;
+}
+
+.detail-panel .history-time {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.detail-panel .history-label {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.detail-panel .history-label-completed,
+.detail-panel .history-label-done {
+  color: var(--green);
+}
+
+.detail-panel .history-label-error,
+.detail-panel .history-label-timeout {
+  color: var(--red);
+}
+
+.detail-panel .history-empty {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: italic;
+}
+
+/* ── Tooltip (fade transitions) ── */
+
+.desk-tooltip {
+  position: absolute;
+  z-index: 30;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  pointer-events: none;
+  min-width: 160px;
+  max-width: 280px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  transition: opacity 0.15s ease;
+}
+
+.desk-tooltip .tooltip-agent {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.desk-tooltip .tooltip-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.desk-tooltip .tooltip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.desk-tooltip .tooltip-dot-active { background: var(--green); }
+.desk-tooltip .tooltip-dot-idle { background: var(--text-muted); }
+.desk-tooltip .tooltip-dot-error,
+.desk-tooltip .tooltip-dot-timeout { background: var(--red); }
+.desk-tooltip .tooltip-dot-queued { background: var(--yellow); }
+.desk-tooltip .tooltip-dot-done { background: var(--cyan); }
+
+.desk-tooltip .tooltip-info {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ── Pipeline overlay positioning ── */
+
+.pipeline-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 80px;
+  pointer-events: none;
+  z-index: 4;
+}

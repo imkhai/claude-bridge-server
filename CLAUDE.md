@@ -107,6 +107,45 @@ workspace/
 └── shared/     # Shared documents between agents
 ```
 
+## Workflow Rules — ALWAYS FOLLOW
+
+When the user asks to implement, fix, review, or improve anything in this project:
+
+1. **ALWAYS use the bridge** — Submit tasks to `http://localhost:3210` via the API. NEVER implement directly yourself.
+2. **Check bridge is running first** — `curl -s http://localhost:3210/health`. If down, start it: `MAX_PARALLEL=8 WORKSPACE=/Users/khainguyen/ws_me/claude-bridge-server TIMEOUT_MS=900000 node server.mjs > /tmp/bridge-server.log 2>&1 &`
+3. **Choose the right pattern:**
+   - **Single task** → `POST /ask` (async) or `POST /ask/sync` (wait for result)
+   - **Independent tasks** → Submit multiple `POST /ask` in parallel (up to 8 workers)
+   - **Sequential pipeline** → `POST /chain` with steps that `usesPreviousResult`
+4. **Assign agent roles** — Use descriptive `agentId` values matching the task (e.g., `security-auditor`, `frontend-engineer`, `animation-fixer`, `qa-reviewer`)
+5. **Give agents full tools** — Always include `"allowedTools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]` so agents can directly modify files
+6. **Set workingDir** — Always set `"workingDir": "/Users/khainguyen/ws_me/claude-bridge-server"`
+7. **Monitor progress** — Use `GET /progress` to check real-time status, `GET /jobs` for completion
+8. **Report results** — After agents complete, verify files changed and summarize what was done
+9. **Dashboard** — Available at `http://localhost:3210/dashboard/` (Real Mode = visual office, Simple Mode = terminal)
+
+### Common Agent Team Patterns
+
+**Security Review:**
+```
+Chain: security-auditor → tech-lead → senior-engineer → qa-reviewer
+```
+
+**Feature Implementation:**
+```
+Parallel: architect + designer (plan) → Parallel: backend-engineer + frontend-engineer (build) → integration-engineer (test)
+```
+
+**Bug Fix:**
+```
+Chain: investigator → senior-engineer → qa-reviewer
+```
+
+**Visual/Animation Work:**
+```
+Parallel: character-animator + desk-artist + environment-engineer + interaction-designer
+```
+
 ## Common Issues
 
 - **Port already in use**: `lsof -ti:3210 | xargs kill -9`
