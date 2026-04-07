@@ -3,6 +3,7 @@ import { config } from './config.mjs';
 import { logger } from './utils/logger.mjs';
 import { saveTask, saveContext, saveResult, resultPath } from './utils/file-manager.mjs';
 import { runClaude, cancelProcess, killAllProcesses } from './claude-runner.mjs';
+import * as db from './db.mjs';
 
 const jobs = new Map();
 const waitingQueue = [];
@@ -10,27 +11,22 @@ let activeCount = 0;
 let totalProcessed = 0;
 const startTime = Date.now();
 
-// --- Completed jobs ring buffer (persists after eviction from main map) ---
-const completedJobs = [];
-const MAX_COMPLETED = 500;
+// --- Completed jobs (persisted to SQLite) ---
 
 function addCompletedJob(job) {
-  completedJobs.push({
-    taskId: job.taskId,
-    agentId: job.agentId,
-    status: job.status,
-    prompt: job.prompt ? job.prompt.slice(0, 200) : '',
-    duration: job.duration,
-    startedAt: job.startedAt,
-    finishedAt: job.finishedAt,
-    exitCode: job.exitCode,
-    error: job.error,
-  });
-  if (completedJobs.length > MAX_COMPLETED) completedJobs.shift();
+  try {
+    db.saveJob(job);
+  } catch (err) {
+    logger.error(`Failed to persist job to DB: ${err.message}`, { taskId: job.taskId });
+  }
 }
 
 export function getCompletedJobs() {
-  return [...completedJobs];
+  try {
+    return db.getCompletedJobs();
+  } catch {
+    return [];
+  }
 }
 
 // --- Timeline event ring buffer ---
@@ -226,70 +222,54 @@ function processQueue() {
 }
 
 export function getPerformanceStats() {
-  // Merge current jobs + completed history, dedup by taskId
-  const allJobs = new Map();
-  for (const cj of completedJobs) {
-    allJobs.set(cj.taskId, cj);
-  }
-  for (const job of jobs.values()) {
-    allJobs.set(job.taskId, job);
+  let dbStats;
+  try {
+    dbStats = db.getPerformanceStats();
+  } catch {
+    dbStats = [];
   }
 
-  const agentJobMap = new Map();
-  for (const job of allJobs.values()) {
-    const id = job.agentId;
-    if (!agentJobMap.has(id)) agentJobMap.set(id, []);
-    agentJobMap.get(id).push(job);
-  }
+  // Build metrics from DB agent_stats
+  const agentMetrics = dbStats.map(row => {
+    const totalFinished = row.total_tasks;
+    const totalTasks = row.success_count;
+    const successRate = totalFinished > 0 ? (row.success_count / totalFinished) * 100 : 0;
+    const avgDuration = totalTasks > 0 ? Math.round(row.total_duration / totalTasks) : 0;
 
-  const agentMetrics = [];
-
-  for (const [agentId, agentJobList] of agentJobMap) {
-    const finished = agentJobList.filter((j) => ['done', 'error', 'timeout'].includes(j.status));
-    const done = finished.filter((j) => j.status === 'done');
-
-    const totalTasks = done.length;
-    const totalFinished = finished.length;
-    const successRate = totalFinished > 0 ? (done.length / totalFinished) * 100 : 0;
-
-    const durations = done.filter((j) => j.duration > 0).map((j) => j.duration);
-    const avgDuration = durations.length > 0
-      ? durations.reduce((a, b) => a + b, 0) / durations.length
-      : 0;
-    const fastestTask = durations.length > 0 ? Math.min(...durations) : 0;
-
-    const totalOutputChars = done.reduce((sum, j) => sum + (j.result ? j.result.length : 0), 0);
-
-    // Streak: consecutive successes from most recent backward
-    const sortedByFinish = [...finished]
-      .sort((a, b) => new Date(b.finishedAt) - new Date(a.finishedAt));
-    let streak = 0;
-    for (const j of sortedByFinish) {
-      if (j.status === 'done') streak++;
-      else break;
-    }
-
-    // Consistency via coefficient of variation
     let consistency = 100;
-    if (durations.length >= 2) {
-      const mean = avgDuration;
-      const variance = durations.reduce((sum, d) => sum + (d - mean) ** 2, 0) / durations.length;
-      const cv = mean > 0 ? (Math.sqrt(variance) / mean) * 100 : 0;
-      consistency = Math.max(0, 100 - cv);
-    }
-
     const reliability = Math.round(successRate * 0.7 + consistency * 0.3);
 
-    agentMetrics.push({
-      agentId, totalTasks, totalFinished, streak, reliability,
+    return {
+      agentId: row.agentId,
+      totalTasks,
+      totalFinished,
+      streak: 0,
+      reliability,
       successRate: Math.round(successRate * 10) / 10,
-      avgDuration: Math.round(avgDuration),
-      fastestTask,
-      totalOutputChars,
-    });
+      avgDuration,
+      fastestTask: 0,
+      totalOutputChars: 0,
+    };
+  });
+
+  // Also include in-memory active agents not yet in DB
+  for (const job of jobs.values()) {
+    if (!agentMetrics.find(m => m.agentId === job.agentId)) {
+      agentMetrics.push({
+        agentId: job.agentId,
+        totalTasks: 0,
+        totalFinished: 0,
+        streak: 0,
+        reliability: 0,
+        successRate: 0,
+        avgDuration: 0,
+        fastestTask: 0,
+        totalOutputChars: 0,
+      });
+    }
   }
 
-  // Composite score: successRate*0.4 + tasksNorm*0.3 + speedNorm*0.3
+  // Composite score
   const maxTasks = Math.max(1, ...agentMetrics.map((a) => a.totalTasks));
   const maxSpeed = Math.max(1, ...agentMetrics.map((a) => a.avgDuration));
 

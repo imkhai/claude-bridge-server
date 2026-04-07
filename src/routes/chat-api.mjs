@@ -1,11 +1,12 @@
 import crypto from 'crypto';
 import { Router } from 'express';
-import { readFile, writeFile, readdir, unlink, stat } from 'fs/promises';
+import { readdir, stat } from 'fs/promises';
 import { join, extname } from 'path';
 import multer from 'multer';
 import { config } from '../config.mjs';
 import { queue, onTimelineEvent } from '../queue.mjs';
 import { logger } from '../utils/logger.mjs';
+import * as db from '../db.mjs';
 
 export const chatRouter = Router();
 
@@ -47,30 +48,23 @@ const upload = multer({
 });
 
 // ---------------------------------------------------------------------------
-// Helpers — conversation storage
+// Helpers — conversation storage (backed by SQLite)
 // ---------------------------------------------------------------------------
-const conversationsDir = () => join(config.WORKSPACE, 'conversations');
 
 function newId(prefix) {
   return `${prefix}-${crypto.randomUUID().slice(0, 12)}`;
 }
 
-async function loadConversation(id) {
-  try {
-    const raw = await readFile(join(conversationsDir(), `${id}.json`), 'utf-8');
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+function loadConversation(id) {
+  return db.getConversation(id);
 }
 
-async function saveConversation(conv) {
-  conv.updatedAt = new Date().toISOString();
-  await writeFile(
-    join(conversationsDir(), `${conv.id}.json`),
-    JSON.stringify(conv, null, 2),
-    'utf-8',
-  );
+function persistConversation(conv) {
+  db.saveConversation(conv);
+}
+
+function persistMessage(conversationId, msg) {
+  db.addMessage(conversationId, msg);
 }
 
 function generateTitle(message) {
@@ -230,7 +224,8 @@ async function spawnAgents(conv, routing, userMessage, files) {
         timestamp: new Date().toISOString(),
       };
       conv.messages.push(agentMsg);
-      await saveConversation(conv);
+      persistMessage(conv.id, agentMsg);
+      persistConversation(conv);
       pushSSE(conv.id, 'agent-message', agentMsg);
     }
 
@@ -338,7 +333,8 @@ async function runChainAgents(conv, agents, userMessage, baseContext, taskIds) {
       timestamp: new Date().toISOString(),
     };
     conv.messages.push(agentMsg);
-    await saveConversation(conv);
+    persistMessage(conv.id, agentMsg);
+    persistConversation(conv);
     pushSSE(conv.id, 'agent-message', agentMsg);
 
     if (result.status !== 'done') {
@@ -380,11 +376,12 @@ async function runParallelAgents(conv, agents, userMessage, baseContext, taskIds
         timestamp: new Date().toISOString(),
       };
       conv.messages.push(agentMsg);
+      persistMessage(conv.id, agentMsg);
       pushSSE(conv.id, 'agent-message', agentMsg);
     }
   }
 
-  await saveConversation(conv);
+  persistConversation(conv);
 }
 
 async function runSingleAgentFlow(conv, agentId, userMessage, baseContext, taskIds) {
@@ -403,7 +400,8 @@ async function runSingleAgentFlow(conv, agentId, userMessage, baseContext, taskI
     timestamp: new Date().toISOString(),
   };
   conv.messages.push(agentMsg);
-  await saveConversation(conv);
+  persistMessage(conv.id, agentMsg);
+  persistConversation(conv);
   pushSSE(conv.id, 'agent-message', agentMsg);
 }
 
@@ -453,7 +451,7 @@ chatRouter.post('/api/chat/send', async (req, res, next) => {
     // Load or create conversation
     let conv;
     if (conversationId) {
-      conv = await loadConversation(conversationId);
+      conv = loadConversation(conversationId);
       if (!conv) {
         return res.status(404).json({ error: 'Conversation not found' });
       }
@@ -465,6 +463,7 @@ chatRouter.post('/api/chat/send', async (req, res, next) => {
         updatedAt: new Date().toISOString(),
         messages: [],
       };
+      persistConversation(conv);
     }
 
     // Add user message
@@ -476,6 +475,7 @@ chatRouter.post('/api/chat/send', async (req, res, next) => {
       timestamp: new Date().toISOString(),
     };
     conv.messages.push(userMsg);
+    persistMessage(conv.id, userMsg);
 
     // Detect intent
     const routing = detectIntent(trimmedMessage, files);
@@ -489,8 +489,8 @@ chatRouter.post('/api/chat/send', async (req, res, next) => {
       timestamp: new Date().toISOString(),
     };
     conv.messages.push(systemMsg);
-
-    await saveConversation(conv);
+    persistMessage(conv.id, systemMsg);
+    persistConversation(conv);
 
     // Respond immediately
     res.json({
@@ -539,40 +539,9 @@ chatRouter.use((err, req, res, next) => {
 });
 
 // GET /api/chat/conversations — List all conversations
-chatRouter.get('/api/chat/conversations', async (req, res, next) => {
+chatRouter.get('/api/chat/conversations', (req, res, next) => {
   try {
-    const dir = conversationsDir();
-    let files;
-    try {
-      files = await readdir(dir);
-    } catch {
-      return res.json({ conversations: [] });
-    }
-
-    const conversations = [];
-    for (const file of files) {
-      if (!file.endsWith('.json')) continue;
-      try {
-        const raw = await readFile(join(dir, file), 'utf-8');
-        const conv = JSON.parse(raw);
-        conversations.push({
-          id: conv.id,
-          title: conv.title,
-          createdAt: conv.createdAt,
-          updatedAt: conv.updatedAt,
-          messageCount: conv.messages ? conv.messages.length : 0,
-          lastMessage: conv.messages && conv.messages.length > 0
-            ? conv.messages[conv.messages.length - 1].content?.slice(0, 100)
-            : null,
-        });
-      } catch {
-        // skip corrupt files
-      }
-    }
-
-    // Sort by updatedAt descending
-    conversations.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-
+    const conversations = db.getConversations();
     res.json({ conversations });
   } catch (err) {
     next(err);
@@ -580,9 +549,9 @@ chatRouter.get('/api/chat/conversations', async (req, res, next) => {
 });
 
 // GET /api/chat/conversations/:id — Get single conversation
-chatRouter.get('/api/chat/conversations/:id', async (req, res, next) => {
+chatRouter.get('/api/chat/conversations/:id', (req, res, next) => {
   try {
-    const conv = await loadConversation(req.params.id);
+    const conv = loadConversation(req.params.id);
     if (!conv) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
@@ -593,16 +562,14 @@ chatRouter.get('/api/chat/conversations/:id', async (req, res, next) => {
 });
 
 // DELETE /api/chat/conversations/:id — Delete conversation
-chatRouter.delete('/api/chat/conversations/:id', async (req, res, next) => {
+chatRouter.delete('/api/chat/conversations/:id', (req, res, next) => {
   try {
     const id = req.params.id;
-    const filePath = join(conversationsDir(), `${id}.json`);
-    try {
-      await unlink(filePath);
-      res.json({ deleted: true, id });
-    } catch {
+    const deleted = db.deleteConversation(id);
+    if (!deleted) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
+    res.json({ deleted: true, id });
   } catch (err) {
     next(err);
   }

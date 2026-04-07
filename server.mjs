@@ -6,6 +6,7 @@ import { logger } from './src/utils/logger.mjs';
 import { ensureDirectories } from './src/utils/file-manager.mjs';
 import { queue } from './src/queue.mjs';
 import { checkClaudeCli } from './src/claude-runner.mjs';
+import { initDatabase, migrateJsonConversations, closeDatabase } from './src/db.mjs';
 import { authMiddleware } from './src/middleware/auth.mjs';
 import { requestLogger } from './src/middleware/request-logger.mjs';
 import { askRouter } from './src/routes/ask.mjs';
@@ -67,6 +68,10 @@ app.use((err, req, res, next) => {
 async function start() {
   await ensureDirectories();
 
+  // Initialize SQLite database and migrate existing JSON conversations
+  initDatabase();
+  await migrateJsonConversations();
+
   const cliOk = await checkClaudeCli();
   if (!cliOk) {
     logger.error('Claude CLI not available. Exiting.');
@@ -102,6 +107,7 @@ async function start() {
     logger.info('Received SIGINT — starting graceful shutdown');
     shuttingDown = true;
     await queue.shutdown();
+    closeDatabase();
     process.exit(0);
   });
 
@@ -109,6 +115,7 @@ async function start() {
     logger.info('Received SIGTERM — starting graceful shutdown');
     shuttingDown = true;
     await queue.shutdown();
+    closeDatabase();
     process.exit(0);
   });
 }
