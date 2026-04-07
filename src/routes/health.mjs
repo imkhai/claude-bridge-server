@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { config } from '../config.mjs';
 import { queue } from '../queue.mjs';
 
 export const healthRouter = Router();
@@ -14,6 +13,5 @@ healthRouter.get('/health', (req, res) => {
     maxParallel: stats.maxParallel,
     queued: stats.queued,
     totalProcessed: stats.totalProcessed,
-    workspace: config.WORKSPACE,
   });
 });

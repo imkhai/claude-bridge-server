@@ -14,12 +14,11 @@ jobsRouter.get('/jobs', (req, res) => {
     taskId: j.taskId,
     agentId: j.agentId,
     status: j.status,
-    prompt: j.prompt,
+    prompt: j.prompt ? j.prompt.slice(0, 100) + (j.prompt.length > 100 ? '...' : '') : null,
     createdAt: j.createdAt,
     startedAt: j.startedAt,
     finishedAt: j.finishedAt,
     duration: j.duration,
-    resultFile: j.resultFile,
   }));
 
   res.json({

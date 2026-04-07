@@ -48,9 +48,15 @@ All via environment variables:
 | `WORKSPACE` | `./workspace` | Root directory for all files |
 | `CLAUDE_PATH` | `claude` | Path to claude CLI binary |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+| `DEFAULT_ALLOWED_TOOLS` | _(none)_ | Default tools for all tasks (comma-separated). Use `Edit,Write,Read,Bash,Glob,Grep` for full file access |
+| `DEFAULT_MAX_TURNS` | `0` | Default max agentic turns (0 = unlimited) |
 
 ```bash
+# Basic start
 MAX_PARALLEL=8 TIMEOUT_MS=300000 npm start
+
+# Full tools mode — Claude can read/write files, run commands
+DEFAULT_ALLOWED_TOOLS="Edit,Write,Read,Bash,Glob,Grep" npm start
 ```
 
 ## API Reference
@@ -101,6 +107,9 @@ curl -X POST http://localhost:3210/ask/sync \
 | `context` | string | No | Inline context text (saved to temp file, passed to Claude) |
 | `contextFile` | string | No | Path to an existing file for Claude to read |
 | `workingDir` | string | No | Working directory for the claude process |
+| `allowedTools` | string[] | No | Tools Claude can use: `["Read","Write","Edit","Bash","Glob","Grep"]` |
+| `disallowedTools` | string[] | No | Tools to explicitly deny |
+| `maxTurns` | number | No | Max agentic turns (limits tool use iterations) |
 
 ### GET /status/:taskId — Check Task Status
 

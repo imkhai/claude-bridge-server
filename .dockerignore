@@ -1,0 +1,7 @@
+node_modules
+workspace
+.git
+docs
+postman
+tests
+*.md

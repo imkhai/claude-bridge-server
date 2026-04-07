@@ -1,10 +1,17 @@
 import crypto from 'crypto';
 import { Router } from 'express';
 import { queue } from '../queue.mjs';
+import {
+  validateWorkingDir,
+  validateAllowedTools,
+  validateDisallowedTools,
+  validateInputFields,
+} from '../utils/validators.mjs';
 
 export const chainRouter = Router();
 
 const chains = new Map();
+const MAX_CHAINS = 500;
 
 chainRouter.post('/chain', (req, res) => {
   const { steps } = req.body;
@@ -13,7 +20,35 @@ chainRouter.post('/chain', (req, res) => {
     return res.status(400).json({ error: 'steps is required and must be a non-empty array' });
   }
 
-  const chainId = 'chain-' + crypto.randomUUID().slice(0, 6);
+  // Validate each step
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    if (!s.prompt || typeof s.prompt !== 'string' || s.prompt.trim().length === 0) {
+      return res.status(400).json({ error: `Step ${i + 1}: prompt is required` });
+    }
+    try {
+      validateInputFields({ agentId: s.agentId, maxTurns: s.maxTurns, prompt: s.prompt });
+      validateWorkingDir(s.workingDir);
+      validateAllowedTools(s.allowedTools);
+      validateDisallowedTools(s.disallowedTools);
+    } catch (err) {
+      return res.status(400).json({ error: `Step ${i + 1}: ${err.message}` });
+    }
+  }
+
+  // Evict completed chains if at capacity
+  if (chains.size >= MAX_CHAINS) {
+    for (const [id, chain] of chains) {
+      if (chain.status === 'done' || chain.status === 'error') {
+        chains.delete(id);
+      }
+    }
+    if (chains.size >= MAX_CHAINS) {
+      return res.status(429).json({ error: 'Too many chains, try again later' });
+    }
+  }
+
+  const chainId = 'chain-' + crypto.randomUUID();
 
   const chainState = {
     chainId,
@@ -24,6 +59,10 @@ chainRouter.post('/chain', (req, res) => {
       prompt: s.prompt,
       agentId: s.agentId || 'unknown',
       usesPreviousResult: s.usesPreviousResult || false,
+      workingDir: s.workingDir || null,
+      allowedTools: s.allowedTools || null,
+      disallowedTools: s.disallowedTools || null,
+      maxTurns: s.maxTurns || null,
       taskId: null,
       status: 'pending',
       duration: null,
@@ -76,6 +115,10 @@ async function executeChain(chain) {
     const params = {
       prompt: step.prompt,
       agentId: step.agentId,
+      workingDir: step.workingDir,
+      allowedTools: step.allowedTools,
+      disallowedTools: step.disallowedTools,
+      maxTurns: step.maxTurns,
     };
 
     if (step.usesPreviousResult && previousResultFile) {

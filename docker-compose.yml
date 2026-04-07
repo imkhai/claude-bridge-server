@@ -1,0 +1,17 @@
+services:
+  claude-bridge:
+    build: .
+    container_name: claude-bridge
+    ports:
+      - "127.0.0.1:3210:3210"
+    volumes:
+      # Persist workspace data
+      - ./workspace:/app/workspace
+    environment:
+      - BRIDGE_PORT=3210
+      - MAX_PARALLEL=4
+      - TIMEOUT_MS=600000
+      - LOG_LEVEL=info
+      # Auto-extracted from macOS keychain, or set manually
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    restart: unless-stopped

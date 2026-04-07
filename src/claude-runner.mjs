@@ -5,7 +5,22 @@ import { logger } from './utils/logger.mjs';
 const MAX_BUFFER = 10 * 1024 * 1024; // 10MB
 const processes = new Map();
 
+class ClaudeProcessError extends Error {
+  constructor(type, message, exitCode, stderr) {
+    super(message);
+    this.type = type;
+    this.exitCode = exitCode;
+    this.stderr = stderr;
+  }
+}
+
 export async function checkClaudeCli() {
+  // Validate CLAUDE_PATH doesn't contain suspicious characters
+  if (/[;&|`$]/.test(config.CLAUDE_PATH)) {
+    logger.error(`CLAUDE_PATH contains suspicious characters: ${config.CLAUDE_PATH}`);
+    return false;
+  }
+
   return new Promise((resolve) => {
     const env = { ...process.env };
     delete env.CLAUDECODE;
@@ -31,17 +46,37 @@ export async function checkClaudeCli() {
   });
 }
 
-export function runClaude({ prompt, contextFile, workingDir, taskId, agentId }) {
+export function runClaude({ prompt, contextFile, workingDir, taskId, agentId, allowedTools, disallowedTools, maxTurns }) {
   return new Promise((resolve, reject) => {
     let fullPrompt = prompt;
     if (contextFile) {
-      fullPrompt = `Read the file at ${contextFile} for context. Then: ${prompt}`;
+      // Use clear delimiters and sanitize the path string to prevent prompt injection via filename
+      const safePath = contextFile.replace(/[^a-zA-Z0-9\-_./]/g, '_');
+      fullPrompt = `<context-file>${safePath}</context-file>\nRead the above file for context, then complete this task:\n${prompt}`;
     }
 
     const args = ['-p', fullPrompt, '--no-session-persistence'];
+
+    // Tool permissions: allow Claude to use tools (read/write files, run commands, etc.)
+    // Per-task allowedTools override, or fall back to DEFAULT_ALLOWED_TOOLS from config
+    const effectiveAllowedTools = allowedTools || (config.DEFAULT_ALLOWED_TOOLS ? config.DEFAULT_ALLOWED_TOOLS.split(',').map((t) => t.trim()).filter(Boolean) : null);
+    if (effectiveAllowedTools) {
+      const tools = Array.isArray(effectiveAllowedTools) ? effectiveAllowedTools : [effectiveAllowedTools];
+      tools.forEach((tool) => args.push('--allowedTools', tool));
+    }
+
+    if (disallowedTools) {
+      const tools = Array.isArray(disallowedTools) ? disallowedTools : [disallowedTools];
+      tools.forEach((tool) => args.push('--disallowedTools', tool));
+    }
+
+    const effectiveMaxTurns = maxTurns || config.DEFAULT_MAX_TURNS;
+    if (effectiveMaxTurns) {
+      args.push('--max-turns', String(effectiveMaxTurns));
+    }
     const cwd = workingDir || config.WORKSPACE;
 
-    logger.info(`Spawning claude process`, { taskId, agentId });
+    logger.info(`Spawning: claude ${args.filter((a) => a !== fullPrompt).join(' ')}`, { taskId, agentId });
 
     const env = { ...process.env };
     delete env.CLAUDECODE;
@@ -91,11 +126,11 @@ export function runClaude({ prompt, contextFile, workingDir, taskId, agentId }) 
       processes.delete(taskId);
 
       if (killed && bufferSize > MAX_BUFFER) {
-        reject({ type: 'error', message: 'Buffer limit exceeded', exitCode: code, stderr });
+        reject(new ClaudeProcessError('error', 'Buffer limit exceeded', code, stderr));
       } else if (killed) {
-        reject({ type: 'timeout', message: `Process timed out after ${config.TIMEOUT_MS}ms`, exitCode: code, stderr });
+        reject(new ClaudeProcessError('timeout', `Process timed out after ${config.TIMEOUT_MS}ms`, code, stderr));
       } else if (code !== 0) {
-        reject({ type: 'error', message: `Process exited with code ${code}`, exitCode: code, stderr });
+        reject(new ClaudeProcessError('error', `Process exited with code ${code}`, code, stderr));
       } else {
         resolve(stdout);
       }
@@ -104,7 +139,7 @@ export function runClaude({ prompt, contextFile, workingDir, taskId, agentId }) 
     proc.on('error', (err) => {
       clearTimeout(timer);
       processes.delete(taskId);
-      reject({ type: 'error', message: err.message, exitCode: null, stderr: '' });
+      reject(new ClaudeProcessError('error', err.message, null, ''));
     });
   });
 }

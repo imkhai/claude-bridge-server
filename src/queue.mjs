@@ -10,8 +10,20 @@ let activeCount = 0;
 let totalProcessed = 0;
 const startTime = Date.now();
 
+function evictStaleJobs() {
+  const now = Date.now();
+  for (const [taskId, job] of jobs) {
+    if (job.status === 'done' || job.status === 'error' || job.status === 'timeout' || job.status === 'cancelled') {
+      const finishedMs = job.finishedAt ? new Date(job.finishedAt).getTime() : 0;
+      if (now - finishedMs > config.JOB_TTL_MS) {
+        jobs.delete(taskId);
+      }
+    }
+  }
+}
+
 function createJob(params) {
-  const taskId = crypto.randomUUID().slice(0, 8);
+  const taskId = crypto.randomUUID();
   const job = {
     taskId,
     agentId: params.agentId || 'unknown',
@@ -20,6 +32,9 @@ function createJob(params) {
     context: params.context || null,
     contextFile: params.contextFile || null,
     workingDir: params.workingDir || null,
+    allowedTools: params.allowedTools || null,
+    disallowedTools: params.disallowedTools || null,
+    maxTurns: params.maxTurns || null,
     createdAt: new Date().toISOString(),
     startedAt: null,
     finishedAt: null,
@@ -35,7 +50,7 @@ function createJob(params) {
 }
 
 async function executeJob(job) {
-  const { taskId, agentId, prompt, context, workingDir } = job;
+  const { taskId, agentId, prompt, context, workingDir, allowedTools, disallowedTools, maxTurns } = job;
   let { contextFile } = job;
 
   job.status = 'running';
@@ -53,7 +68,7 @@ async function executeJob(job) {
     }
 
     const startMs = Date.now();
-    const output = await runClaude({ prompt, contextFile, workingDir, taskId, agentId });
+    const output = await runClaude({ prompt, contextFile, workingDir, taskId, agentId, allowedTools, disallowedTools, maxTurns });
     const duration = Date.now() - startMs;
 
     job.status = 'done';
@@ -66,7 +81,10 @@ async function executeJob(job) {
     logger.info(`DONE (${duration}ms, ${output.length} chars)`, { taskId, agentId });
     totalProcessed++;
 
-    if (job._resolve) job._resolve(job);
+    if (job._resolve) {
+      job._resolve(job);
+      job._resolve = null;
+    }
   } catch (err) {
     const duration = job.startedAt ? Date.now() - new Date(job.startedAt).getTime() : 0;
 
@@ -79,9 +97,14 @@ async function executeJob(job) {
     logger.error(`${job.status.toUpperCase()}: ${err.message}`, { taskId, agentId });
     totalProcessed++;
 
-    if (job._resolve) job._resolve(job);
+    if (job._resolve) {
+      job._resolve(job);
+      job._resolve = null;
+    }
   } finally {
-    activeCount--;
+    if (job.status !== 'cancelled') {
+      activeCount--;
+    }
     processQueue();
   }
 }
@@ -95,6 +118,13 @@ function processQueue() {
 
 export const queue = {
   submit(params) {
+    if (jobs.size >= config.MAX_QUEUE_SIZE) {
+      evictStaleJobs();
+      if (jobs.size >= config.MAX_QUEUE_SIZE) {
+        throw new Error('Queue full');
+      }
+    }
+
     const job = createJob(params);
     waitingQueue.push(job);
 
@@ -107,6 +137,13 @@ export const queue = {
   },
 
   submitAndWait(params) {
+    if (jobs.size >= config.MAX_QUEUE_SIZE) {
+      evictStaleJobs();
+      if (jobs.size >= config.MAX_QUEUE_SIZE) {
+        throw new Error('Queue full');
+      }
+    }
+
     const job = createJob(params);
 
     const promise = new Promise((resolve) => {
@@ -152,7 +189,10 @@ export const queue = {
       if (idx !== -1) waitingQueue.splice(idx, 1);
       job.status = 'cancelled';
       job.finishedAt = new Date().toISOString();
-      if (job._resolve) job._resolve(job);
+      if (job._resolve) {
+        job._resolve(job);
+        job._resolve = null;
+      }
       logger.info(`CANCELLED (was queued)`, { taskId, agentId: job.agentId });
       return job;
     }
@@ -161,8 +201,13 @@ export const queue = {
       cancelProcess(taskId);
       job.status = 'cancelled';
       job.finishedAt = new Date().toISOString();
-      if (job._resolve) job._resolve(job);
+      activeCount--;
+      if (job._resolve) {
+        job._resolve(job);
+        job._resolve = null;
+      }
       logger.info(`CANCELLED (was running)`, { taskId, agentId: job.agentId });
+      processQueue();
       return job;
     }
 
@@ -187,7 +232,10 @@ export const queue = {
       const job = waitingQueue.shift();
       job.status = 'cancelled';
       job.finishedAt = new Date().toISOString();
-      if (job._resolve) job._resolve(job);
+      if (job._resolve) {
+        job._resolve(job);
+        job._resolve = null;
+      }
     }
 
     // Mark running jobs as cancelled and kill processes
@@ -195,7 +243,10 @@ export const queue = {
       if (job.status === 'running') {
         job.status = 'cancelled';
         job.finishedAt = new Date().toISOString();
-        if (job._resolve) job._resolve(job);
+        if (job._resolve) {
+          job._resolve(job);
+          job._resolve = null;
+        }
       }
     }
 
