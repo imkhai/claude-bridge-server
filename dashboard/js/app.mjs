@@ -88,6 +88,11 @@ function connectSSE() {
     connectionDot.title = 'Connected';
     connectionLabel.textContent = 'Connected';
     reconnectDelay = 1000;
+
+    // Clear stale state on reconnect — server sends full snapshot immediately
+    state.resetState();
+    // Also fetch full data to ensure we have worklog/timeline
+    refreshData();
   });
 
   eventSource.addEventListener('agents', (e) => {

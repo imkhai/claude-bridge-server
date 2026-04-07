@@ -43,8 +43,14 @@ function init() {
 
   agents.init({});
 
-  // Load conversations
-  history.loadConversations();
+  // Load conversations, then auto-open from URL param if present
+  history.loadConversations().then(() => {
+    const params = new URLSearchParams(window.location.search);
+    const convId = params.get('conv');
+    if (convId) {
+      loadConversation(convId);
+    }
+  });
 
   // Wire input events
   chatInput.addEventListener('input', () => {

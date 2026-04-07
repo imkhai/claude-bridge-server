@@ -48,8 +48,12 @@ All via environment variables:
 | `WORKSPACE` | `./workspace` | Root directory for all files |
 | `CLAUDE_PATH` | `claude` | Path to claude CLI binary |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
-| `DEFAULT_ALLOWED_TOOLS` | _(none)_ | Default tools for all tasks (comma-separated). Use `Edit,Write,Read,Bash,Glob,Grep` for full file access |
+| `BIND_HOST` | `127.0.0.1` | Network interface to bind to |
+| `API_KEY` | _(none)_ | API key for auth (disabled if unset) |
+| `DEFAULT_ALLOWED_TOOLS` | _(none)_ | Default tools for all tasks (comma-separated or `all`) |
 | `DEFAULT_MAX_TURNS` | `0` | Default max agentic turns (0 = unlimited) |
+| `MAX_QUEUE_SIZE` | `1000` | Max jobs in queue |
+| `JOB_TTL_MS` | `3600000` | Job time-to-live (1 hour) |
 
 ```bash
 # Basic start
@@ -131,6 +135,14 @@ curl "http://localhost:3210/jobs?status=done&agentId=researcher&limit=10"
 curl -X POST http://localhost:3210/cancel/a1b2c3d4
 ```
 
+### GET /progress — Real-Time Progress
+
+```bash
+curl http://localhost:3210/progress
+```
+
+Returns progress for all running tasks (output bytes, elapsed time, recent stderr).
+
 ### GET /health — Health Check
 
 ```bash
@@ -167,6 +179,37 @@ curl -X POST http://localhost:3210/chain \
 ```bash
 curl http://localhost:3210/chain/chain-a1b2c3
 ```
+
+## Dashboard
+
+Visual monitoring interface at `http://localhost:3210/dashboard/`.
+
+- **Real Mode** — animated visual office showing agents at desks, real-time task progress, chain visualizations, and a leaderboard
+- **Simple Mode** — terminal-style view with agent status, job list, and timeline events
+
+Data is served via REST endpoints (`/api/dashboard/*`) and a real-time SSE stream (`/api/dashboard/stream`).
+
+## Chat Commander
+
+Conversational interface at `http://localhost:3210/chat`.
+
+- **Natural language** — describe what you need; intent detection routes to the right agent team
+- **File upload** — attach images, docs, or code files (up to 50MB). Images trigger an image-analyzer agent automatically
+- **Agent routing** — auto-selects patterns: bug-report, implementation, review, bugfix, design, documentation, research
+- **Conversation history** — conversations persist in `workspace/conversations/` and are browsable in the UI
+- **Real-time updates** — SSE stream per conversation shows agent status and messages as they complete
+
+### Chat API
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/chat/send` | Send message, detect intent, spawn agents |
+| POST | `/api/chat/upload` | Upload files (max 10 files, 50MB each) |
+| GET | `/api/chat/conversations` | List all conversations |
+| GET | `/api/chat/conversations/:id` | Get conversation with full message history |
+| DELETE | `/api/chat/conversations/:id` | Delete a conversation |
+| GET | `/api/chat/files` | List uploaded files |
+| GET | `/api/chat/stream/:conversationId` | SSE for real-time agent updates |
 
 ## Context Passing
 
@@ -263,16 +306,23 @@ claude-bridge-server/
 │   ├── config.mjs              ← Environment config
 │   ├── queue.mjs               ← Job queue & scheduler
 │   ├── claude-runner.mjs       ← Process spawning
+│   ├── middleware/
+│   │   ├── auth.mjs            ← API key authentication
+│   │   └── request-logger.mjs  ← Request logging
 │   ├── routes/
 │   │   ├── ask.mjs             ← POST /ask, POST /ask/sync
 │   │   ├── chain.mjs           ← POST /chain, GET /chain/:id
-│   │   ├── status.mjs          ← GET /status/:id
+│   │   ├── status.mjs          ← GET /status/:id, GET /progress
 │   │   ├── jobs.mjs            ← GET /jobs
 │   │   ├── health.mjs          ← GET /health
-│   │   └── cancel.mjs          ← POST /cancel/:id
+│   │   ├── cancel.mjs          ← POST /cancel/:id
+│   │   ├── dashboard-api.mjs   ← Dashboard REST + SSE endpoints
+│   │   └── chat-api.mjs        ← Chat Commander REST + SSE + file upload
 │   └── utils/
 │       ├── logger.mjs          ← Structured console logger
 │       └── file-manager.mjs    ← Workspace file operations
+├── dashboard/                  ← Dashboard static files (Real Mode + Simple Mode)
+│   └── chat/                   ← Chat Commander static files
 ├── docs/
 │   ├── architecture.md         ← System design & flow diagrams
 │   ├── multi-agent-workflows.md ← Team workflow patterns
@@ -286,7 +336,9 @@ claude-bridge-server/
     ├── tasks/                  ← Saved prompts
     ├── results/                ← Claude output files
     ├── contexts/               ← Temp context files
-    └── shared/                 ← Shared documents
+    ├── shared/                 ← Shared documents
+    ├── uploads/                ← Files uploaded via Chat Commander
+    └── conversations/          ← Chat conversation JSON files
 ```
 
 ## Docs

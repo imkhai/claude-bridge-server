@@ -2,6 +2,7 @@
 
 const IDLE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
 const FADE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes — active agents not updated become stale
 
 // Color assignment by role keywords
 const COLOR_MAP = [
@@ -44,6 +45,22 @@ export class DashboardState {
     this.leaderboard = [];
     this.maxTimeline = 100;
     this.listeners = new Set();
+    this.lastAgentUpdate = Date.now();
+  }
+
+  /**
+   * Reset all state — call on SSE reconnect so stale data is cleared
+   * before fresh snapshots arrive from the server.
+   */
+  resetState() {
+    this.agents = [];
+    this.stats = { active: 0, maxParallel: 4, queued: 0, totalProcessed: 0, uptime: 0 };
+    this.chains = [];
+    this.timeline = [];
+    this.worklog = [];
+    this.leaderboard = [];
+    this.lastAgentUpdate = Date.now();
+    this.notify();
   }
 
   onChange(fn) {
@@ -58,7 +75,14 @@ export class DashboardState {
   }
 
   updateAgents(data) {
-    this.agents = data.agents || [];
+    const now = Date.now();
+    this.lastAgentUpdate = now;
+    const incoming = data.agents || [];
+    // Add lastUpdated timestamp to each agent
+    for (const agent of incoming) {
+      agent.lastUpdated = now;
+    }
+    this.agents = incoming;
     if (data.stats) {
       this.stats = data.stats;
     }
@@ -108,6 +132,12 @@ export class DashboardState {
   }
 
   getEffectiveStatus(agent) {
+    // If agent is marked active but hasn't been updated in > 2 minutes, it's stale
+    if (agent.status === 'active' && agent.lastUpdated) {
+      const sinceUpdate = Date.now() - agent.lastUpdated;
+      if (sinceUpdate > STALE_THRESHOLD_MS) return 'stale';
+    }
+
     if (agent.status === 'active') return 'active';
     if (agent.status === 'queued') return 'queued';
     if (agent.status === 'error') return 'error';

@@ -287,6 +287,8 @@ function groupByDate(items, dateField = 'updatedAt') {
 }
 
 function getPreview(conv) {
+  // API list returns lastMessage (string), full conv has messages array
+  if (conv.lastMessage) return conv.lastMessage;
   if (!conv.messages || conv.messages.length === 0) return 'Empty conversation';
   const last = conv.messages[conv.messages.length - 1];
   return (last.content || '').substring(0, 60);

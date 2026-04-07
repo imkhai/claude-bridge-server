@@ -183,6 +183,18 @@ export function update(state) {
 
   const agents = state.agents || [];
 
+  // If state was reset (no agents), clear all slots so stale desks disappear
+  if (agents.length === 0 && agentSlots.size > 0) {
+    _clearAllAgents();
+  }
+
+  // Remove agents that are no longer in server state (cleared after restart)
+  for (const [agentId] of agentSlots) {
+    if (!agents.find(a => a.agentId === agentId)) {
+      _removeAgent(agentId);
+    }
+  }
+
   // Assign new agents to slots
   for (const agent of agents) {
     if (!agentSlots.has(agent.agentId) && agentOrder.length < MAX_AGENTS) {
@@ -236,6 +248,28 @@ export function update(state) {
   // Update interactions — agent discussions + detail panel
   interactions.updateAgents(agents);
   interactions.refreshPanel();
+}
+
+function _clearAllAgents() {
+  for (const [agentId, slot] of agentSlots) {
+    slot.character.destroy();
+    slot.desk.destroy();
+    app.stage.removeChild(slot.character.container);
+    app.stage.removeChild(slot.desk.container);
+  }
+  agentSlots.clear();
+  agentOrder = [];
+}
+
+function _removeAgent(agentId) {
+  const slot = agentSlots.get(agentId);
+  if (!slot) return;
+  slot.character.destroy();
+  slot.desk.destroy();
+  app.stage.removeChild(slot.character.container);
+  app.stage.removeChild(slot.desk.container);
+  agentSlots.delete(agentId);
+  agentOrder = agentOrder.filter(id => id !== agentId);
 }
 
 function _addAgent(agentData) {

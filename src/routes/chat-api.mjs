@@ -192,69 +192,77 @@ function pushSSE(conversationId, event, data) {
 // ---------------------------------------------------------------------------
 // Agent orchestration
 // ---------------------------------------------------------------------------
-const WORKING_DIR = config.WORKSPACE.replace(/\/workspace\/?$/, '') || config.WORKSPACE;
+// CHAT_WORKING_DIR allows chat agents to work outside workspace (e.g., on project source)
+// Falls back to WORKSPACE if not set
+const WORKING_DIR = process.env.CHAT_WORKING_DIR || config.WORKSPACE;
 const DEFAULT_TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'];
 
 async function spawnAgents(conv, routing, userMessage, files) {
-  const { pattern, agents, method } = routing;
-  const taskIds = [];
+  try {
+    const { pattern, agents, method } = routing;
+    const taskIds = [];
 
-  // If images present, prepend image-analyzer if not already first
-  const hasImages = files.some(f => IMAGE_RE.test(f));
-  let imageAnalysis = null;
+    // If images present, prepend image-analyzer if not already first
+    const hasImages = files.some(f => IMAGE_RE.test(f));
+    let imageAnalysis = null;
 
-  if (hasImages && agents[0] !== 'image-analyzer') {
-    // Spawn image analyzer first
-    const imagePaths = files.filter(f => IMAGE_RE.test(f));
-    const analyzerResult = await runSingleAgent(
-      'image-analyzer',
-      `Analyze these images and describe what you see in detail: ${imagePaths.join(', ')}. Then explain how they relate to this request: "${userMessage}"`,
-      null,
-      conv.id,
-    );
-    taskIds.push(analyzerResult.taskId);
-    imageAnalysis = analyzerResult.result;
+    if (hasImages && agents[0] !== 'image-analyzer') {
+      // Spawn image analyzer first
+      const imagePaths = files.filter(f => IMAGE_RE.test(f));
+      const analyzerResult = await runSingleAgent(
+        'image-analyzer',
+        `Analyze these images and describe what you see in detail: ${imagePaths.join(', ')}. Then explain how they relate to this request: "${userMessage}"`,
+        null,
+        conv.id,
+      );
+      taskIds.push(analyzerResult.taskId);
+      imageAnalysis = analyzerResult.result;
 
-    // Add agent message to conversation
-    const agentMsg = {
-      id: newId('msg'),
-      role: 'agent',
-      agentId: 'image-analyzer',
-      content: analyzerResult.result || analyzerResult.error || 'Image analysis failed',
-      taskId: analyzerResult.taskId,
-      duration: analyzerResult.duration,
-      status: analyzerResult.status,
-      timestamp: new Date().toISOString(),
-    };
-    conv.messages.push(agentMsg);
-    await saveConversation(conv);
-    pushSSE(conv.id, 'agent-message', agentMsg);
+      // Add agent message to conversation
+      const agentMsg = {
+        id: newId('msg'),
+        role: 'agent',
+        agentId: 'image-analyzer',
+        content: analyzerResult.result || analyzerResult.error || 'Image analysis failed',
+        taskId: analyzerResult.taskId,
+        duration: analyzerResult.duration,
+        status: analyzerResult.status,
+        timestamp: new Date().toISOString(),
+      };
+      conv.messages.push(agentMsg);
+      await saveConversation(conv);
+      pushSSE(conv.id, 'agent-message', agentMsg);
+    }
+
+    // Build context from files + image analysis
+    let baseContext = '';
+    if (imageAnalysis) {
+      baseContext += `## Image Analysis\n${imageAnalysis}\n\n`;
+    }
+    const nonImageFiles = files.filter(f => !IMAGE_RE.test(f));
+    if (nonImageFiles.length > 0) {
+      baseContext += `## Reference Files\nThe user attached these files: ${nonImageFiles.join(', ')}. Read them for context.\n\n`;
+    }
+
+    // Filter out image-analyzer from remaining agents if we already ran it
+    const remainingAgents = agents.filter(a => a !== 'image-analyzer');
+
+    if (method === 'chain') {
+      await runChainAgents(conv, remainingAgents, userMessage, baseContext, taskIds);
+    } else if (method === 'parallel') {
+      await runParallelAgents(conv, remainingAgents, userMessage, baseContext, taskIds);
+    } else {
+      // single
+      await runSingleAgentFlow(conv, remainingAgents[0], userMessage, baseContext, taskIds);
+    }
+
+    // Final completion event
+    pushSSE(conv.id, 'complete', { conversationId: conv.id });
+  } catch (err) {
+    logger.error(`spawnAgents crashed: ${err.message}`, { conversationId: conv.id, stack: err.stack });
+    pushSSE(conv.id, 'error', { error: `Agent orchestration failed: ${err.message}` });
+    pushSSE(conv.id, 'complete', { conversationId: conv.id, error: err.message });
   }
-
-  // Build context from files + image analysis
-  let baseContext = '';
-  if (imageAnalysis) {
-    baseContext += `## Image Analysis\n${imageAnalysis}\n\n`;
-  }
-  const nonImageFiles = files.filter(f => !IMAGE_RE.test(f));
-  if (nonImageFiles.length > 0) {
-    baseContext += `## Reference Files\nThe user attached these files: ${nonImageFiles.join(', ')}. Read them for context.\n\n`;
-  }
-
-  // Filter out image-analyzer from remaining agents if we already ran it
-  const remainingAgents = agents.filter(a => a !== 'image-analyzer');
-
-  if (method === 'chain') {
-    await runChainAgents(conv, remainingAgents, userMessage, baseContext, taskIds);
-  } else if (method === 'parallel') {
-    await runParallelAgents(conv, remainingAgents, userMessage, baseContext, taskIds);
-  } else {
-    // single
-    await runSingleAgentFlow(conv, remainingAgents[0], userMessage, baseContext, taskIds);
-  }
-
-  // Final completion event
-  pushSSE(conv.id, 'complete', { conversationId: conv.id });
 }
 
 async function runSingleAgent(agentId, prompt, contextContent, conversationId) {
@@ -270,7 +278,26 @@ async function runSingleAgent(agentId, prompt, contextContent, conversationId) {
 
   pushSSE(conversationId, 'agent-status', { agentId, status: 'running' });
 
-  const job = await queue.submitAndWait(params);
+  let job;
+  try {
+    job = await queue.submitAndWait(params);
+  } catch (err) {
+    logger.error(`Agent ${agentId} queue error: ${err.message}`, { conversationId });
+    pushSSE(conversationId, 'agent-status', {
+      agentId,
+      status: 'error',
+      duration: 0,
+      taskId: null,
+    });
+    return {
+      taskId: null,
+      result: null,
+      error: err.message,
+      status: 'error',
+      duration: 0,
+      resultFile: null,
+    };
+  }
 
   pushSSE(conversationId, 'agent-status', {
     agentId,

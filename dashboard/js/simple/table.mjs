@@ -10,6 +10,7 @@ const STATUS_ICONS = {
   queued: '<span class="si-queued">●</span>',
   idle: '<span class="si-idle">○</span>',
   faded: '<span class="si-idle">○</span>',
+  stale: '<span class="si-error">?</span>',
   error: '<span class="si-error">✗</span>',
   timeout: '<span class="si-error">✗</span>',
 };
@@ -20,6 +21,7 @@ const STATUS_LABELS = {
   queued: 'WAIT',
   idle: 'IDLE',
   faded: 'IDLE',
+  stale: 'STALE',
   error: 'ERR',
   timeout: 'TIME',
 };
@@ -67,7 +69,7 @@ export function renderAgentsTable(el, state) {
 
     const color = getAgentColor(agent.agentId);
     const blink = agent.status === 'active' ? ' blink' : '';
-    const rowClass = `term-row status-${effectiveStatus === 'faded' ? 'idle' : effectiveStatus}`;
+    const rowClass = `term-row status-${effectiveStatus === 'faded' ? 'idle' : effectiveStatus === 'stale' ? 'error' : effectiveStatus}`;
 
     html += `<div class="${rowClass}">`;
     html += `│ <span style="color:${color}">${pad(escapeHtml(agent.agentId), colAgent)}</span>`;

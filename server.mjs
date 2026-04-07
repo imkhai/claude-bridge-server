@@ -88,6 +88,16 @@ async function start() {
     logger.info('='.repeat(50));
   });
 
+  process.on('uncaughtException', (err) => {
+    logger.error(`Uncaught exception (server continues): ${err.message}`, { stack: err.stack });
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    const stack = reason instanceof Error ? reason.stack : undefined;
+    logger.error(`Unhandled rejection (server continues): ${msg}`, { stack });
+  });
+
   process.on('SIGINT', async () => {
     logger.info('Received SIGINT — starting graceful shutdown');
     shuttingDown = true;
