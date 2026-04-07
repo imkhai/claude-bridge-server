@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Claude Bridge Server",
-    "description": "API collection for Claude Bridge — an HTTP bridge between OpenClaw agents and Claude Code CLI.",
+    "description": "API collection for Claude Bridge — an HTTP bridge between AI agents and Claude Code CLI.\n\nIncludes: basic tasks, chains, and real-world workflow recipes (bug investigation, security review, refactoring, etc.)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [],
@@ -147,7 +147,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["ask", "sync"]
             },
-            "description": "Submit a task and wait for the full result. Response includes result text, duration, resultFile path.\n\n⚠️ This can take a long time — increase Postman timeout to 10+ minutes."
+            "description": "Submit a task and wait for the full result. Response includes result text, duration, resultFile path.\n\nThis can take a long time — increase Postman timeout to 10+ minutes in Settings > General > Request timeout."
           },
           "response": []
         },
@@ -200,7 +200,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"prompt\": \"List all JavaScript files and describe the project structure\",\n  \"agentId\": \"explorer\",\n  \"workingDir\": \"/Users/khainguyen/ws_me/claude-bridge-server\"\n}"
+              "raw": "{\n  \"prompt\": \"List all JavaScript files and describe the project structure\",\n  \"agentId\": \"explorer\",\n  \"workingDir\": \"/path/to/your/project\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/ask/sync",
@@ -324,6 +324,465 @@
               "path": ["chain", "{{chainId}}"]
             },
             "description": "Check progress of a chain. Shows current step and per-step status/duration."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workflows: Quick Tasks",
+      "description": "Simple single-agent tasks for everyday work.",
+      "item": [
+        {
+          "name": "Code Explanation",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Explain this code in plain English. What does it do, what are the edge cases, and what could go wrong?\",\n  \"agentId\": \"explainer\",\n  \"context\": \"const debounce = (fn, ms) => { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; };\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ask/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["ask", "sync"]
+            },
+            "description": "Explain a code snippet in plain English with edge cases."
+          },
+          "response": []
+        },
+        {
+          "name": "Error Message Decoder",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Explain this error, what causes it, and how to fix it.\",\n  \"agentId\": \"error-decoder\",\n  \"context\": \"TypeError: Cannot read properties of undefined (reading 'map')\\n    at UserList (UserList.tsx:14:22)\\n    at renderWithHooks (react-dom.development.js:14985:18)\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ask/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["ask", "sync"]
+            },
+            "description": "Paste an error stack trace and get an explanation with fix suggestions."
+          },
+          "response": []
+        },
+        {
+          "name": "SQL Query Builder",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Write a PostgreSQL query: find users who signed up in the last 30 days, have at least 3 orders, and unverified email. Return name, email, signup date, order count. Use proper joins.\",\n  \"agentId\": \"sql-helper\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ask/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["ask", "sync"]
+            },
+            "description": "Describe what you need and get a SQL query with explanation."
+          },
+          "response": []
+        },
+        {
+          "name": "Regex Helper",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Write a regex to validate email addresses. Show the regex, explain each part, and give 3 matching and 3 non-matching examples.\",\n  \"agentId\": \"regex-helper\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ask/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["ask", "sync"]
+            },
+            "description": "Get a regex with explanation and test examples."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workflows: Bug Investigation",
+      "description": "4-step pipeline: Reproducer → Root Cause Analyst → Fixer → Verifier",
+      "item": [
+        {
+          "name": "Run Bug Investigation Chain",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.chainId) {",
+                  "    pm.environment.set('chainId', res.chainId);",
+                  "    console.log('Saved chainId:', res.chainId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"steps\": [\n    {\n      \"prompt\": \"You are a QA Engineer. Analyze this bug report and produce: 1) Reproduction steps 2) Expected vs actual behavior 3) Affected components 4) Severity.\\n\\nBug: Users report the login form submits twice when clicking submit, causing duplicate API calls. Sometimes the user gets logged out immediately after login due to a race condition.\",\n      \"agentId\": \"reproducer\"\n    },\n    {\n      \"prompt\": \"You are a Debugger. Based on the bug analysis, determine the root cause. Consider: missing debounce, event bubbling, React double-render in StrictMode, missing loading state guard. Output a clear diagnosis.\",\n      \"agentId\": \"root-cause-analyst\",\n      \"usesPreviousResult\": true\n    },\n    {\n      \"prompt\": \"You are a Senior Engineer. Based on the root cause, write the minimal fix. Show the buggy pattern (before) and fixed code (after). Keep changes minimal.\",\n      \"agentId\": \"fixer\",\n      \"usesPreviousResult\": true\n    },\n    {\n      \"prompt\": \"You are a Code Reviewer. Review the fix: 1) Does it address root cause? 2) Regression risk? 3) Edge cases? Write 3 test cases. End with VERDICT: APPROVED or VERDICT: NEEDS CHANGES.\",\n      \"agentId\": \"verifier\",\n      \"usesPreviousResult\": true\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chain",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain"]
+            },
+            "description": "Full bug investigation pipeline.\n\n1. Reproducer: analyzes the bug report\n2. Root Cause Analyst: diagnoses the underlying issue\n3. Fixer: writes the minimal fix\n4. Verifier: reviews the fix and writes test cases\n\nPoll /chain/:chainId to track progress."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Bug Investigation Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/chain/{{chainId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain", "{{chainId}}"]
+            },
+            "description": "Poll this to see which step is currently running."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workflows: Security Review",
+      "description": "3-step pipeline: Security Auditor → Security Engineer → Penetration Tester",
+      "item": [
+        {
+          "name": "Run Security Review Chain",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.chainId) {",
+                  "    pm.environment.set('chainId', res.chainId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"steps\": [\n    {\n      \"prompt\": \"You are a Security Auditor. Audit this Express API against OWASP Top 10. For each vulnerability: severity, location, exploit scenario, and fix.\\n\\nCode:\\napp.post(\\\"/login\\\", (req, res) => {\\n  const { username, password } = req.body;\\n  const user = db.query(`SELECT * FROM users WHERE username = '${username}' AND password = '${password}'`);\\n  if (user) {\\n    const token = jwt.sign({ id: user.id, role: user.role }, \\\"mysecretkey\\\");\\n    res.cookie(\\\"token\\\", token);\\n    res.json({ token });\\n  } else {\\n    res.status(401).json({ error: \\\"Invalid credentials\\\" });\\n  }\\n});\\n\\napp.get(\\\"/user/:id\\\", (req, res) => {\\n  const user = db.query(`SELECT * FROM users WHERE id = ${req.params.id}`);\\n  res.json(user);\\n});\",\n      \"agentId\": \"security-auditor\"\n    },\n    {\n      \"prompt\": \"You are a Security Engineer. Based on the audit, rewrite the code with proper security: parameterized queries, bcrypt, secure JWT config, input validation. Show complete hardened code.\",\n      \"agentId\": \"security-engineer\",\n      \"usesPreviousResult\": true\n    },\n    {\n      \"prompt\": \"You are a Penetration Tester. Review the hardened code. Try to find remaining attack vectors: SQL injection, JWT attacks, timing attacks, CSRF. Rate the security improvement.\",\n      \"agentId\": \"pen-tester\",\n      \"usesPreviousResult\": true\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chain",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain"]
+            },
+            "description": "Full security review pipeline.\n\n1. Security Auditor: finds OWASP vulnerabilities\n2. Security Engineer: hardens the code\n3. Pen Tester: verifies the hardened code\n\nPoll /chain/:chainId to track progress."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Security Review Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/chain/{{chainId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain", "{{chainId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workflows: Code Refactoring",
+      "description": "3-step pipeline: Code Analyst → Refactorer → Reviewer",
+      "item": [
+        {
+          "name": "Run Refactoring Chain",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.chainId) {",
+                  "    pm.environment.set('chainId', res.chainId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"steps\": [\n    {\n      \"prompt\": \"You are a Code Quality Analyst. Analyze this code for: 1) Code smells 2) SOLID violations 3) SQL injection 4) Readability. Rank by severity.\\n\\nCode:\\nclass UserService {\\n  async getUser(id, type, includeOrders, includeAddress, format) {\\n    let user = await db.query(\\\"SELECT * FROM users WHERE id = \\\" + id);\\n    if (user) {\\n      if (type === \\\"admin\\\") {\\n        user.permissions = [\\\"read\\\", \\\"write\\\", \\\"delete\\\", \\\"admin\\\"];\\n        if (includeOrders) {\\n          user.orders = await db.query(\\\"SELECT * FROM orders WHERE user_id = \\\" + id);\\n          if (format === \\\"summary\\\") {\\n            user.orders = user.orders.map(o => ({ id: o.id, total: o.total }));\\n          }\\n        }\\n      } else if (type === \\\"customer\\\") {\\n        user.permissions = [\\\"read\\\"];\\n      }\\n    }\\n    return user;\\n  }\\n}\",\n      \"agentId\": \"code-analyst\"\n    },\n    {\n      \"prompt\": \"You are a Senior Engineer. Based on the analysis, refactor the code. Apply: parameterized queries, early returns, extract methods, constants. Preserve behavior exactly.\",\n      \"agentId\": \"refactorer\",\n      \"usesPreviousResult\": true\n    },\n    {\n      \"prompt\": \"You are a Code Reviewer. Compare refactored vs original. Check: 1) All issues fixed? 2) Behavior preserved? 3) New issues? Suggest 3 unit tests. End with VERDICT: APPROVED or VERDICT: NEEDS CHANGES.\",\n      \"agentId\": \"refactor-reviewer\",\n      \"usesPreviousResult\": true\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chain",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain"]
+            },
+            "description": "Refactoring pipeline.\n\n1. Code Analyst: identifies smells and issues\n2. Refactorer: applies improvements\n3. Reviewer: verifies behavior preserved\n\nPoll /chain/:chainId to track progress."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Refactoring Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/chain/{{chainId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain", "{{chainId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workflows: Test Generation",
+      "description": "3-step pipeline: Test Architect → Test Writer → Test Reviewer",
+      "item": [
+        {
+          "name": "Run Test Generation Chain",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.chainId) {",
+                  "    pm.environment.set('chainId', res.chainId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"steps\": [\n    {\n      \"prompt\": \"You are a Test Architect. Analyze this function and produce a test plan: 1) All behaviors to test 2) Edge cases (empty, null, boundary, overflow) 3) Error scenarios 4) Group into suites. Do NOT write code yet.\\n\\nCode:\\nasync function transferMoney(fromAccount, toAccount, amount, currency = \\\"USD\\\") {\\n  if (!fromAccount || !toAccount) throw new Error(\\\"Both accounts required\\\");\\n  if (fromAccount === toAccount) throw new Error(\\\"Cannot transfer to same account\\\");\\n  if (amount <= 0) throw new Error(\\\"Amount must be positive\\\");\\n  if (amount > 1000000) throw new Error(\\\"Amount exceeds limit\\\");\\n  const rate = await getExchangeRate(currency, \\\"USD\\\");\\n  const usdAmount = amount * rate;\\n  const balance = await getBalance(fromAccount);\\n  if (balance < usdAmount) throw new Error(\\\"Insufficient funds\\\");\\n  await debit(fromAccount, usdAmount);\\n  try {\\n    await credit(toAccount, usdAmount);\\n  } catch (e) {\\n    await credit(fromAccount, usdAmount);\\n    throw new Error(\\\"Transfer failed: \\\" + e.message);\\n  }\\n  return { fromAccount, toAccount, amount, currency, usdAmount, newBalance: balance - usdAmount };\\n}\",\n      \"agentId\": \"test-architect\"\n    },\n    {\n      \"prompt\": \"You are a QA Engineer. Based on the test plan, write the complete Jest test suite. Include: describe blocks, mocking, beforeEach, and cover every case from the plan.\",\n      \"agentId\": \"test-writer\",\n      \"usesPreviousResult\": true\n    },\n    {\n      \"prompt\": \"You are a QA Lead. Review the test suite: 1) Coverage gaps? 2) Assertions specific enough? 3) Mocks correct? 4) Missing edge cases? Add any missing tests.\",\n      \"agentId\": \"test-reviewer\",\n      \"usesPreviousResult\": true\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chain",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain"]
+            },
+            "description": "Test generation pipeline.\n\n1. Test Architect: plans all test cases\n2. Test Writer: implements the Jest suite\n3. Test Reviewer: finds coverage gaps\n\nPoll /chain/:chainId to track progress."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Test Generation Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/chain/{{chainId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain", "{{chainId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workflows: Performance Audit",
+      "description": "2-step pipeline: Performance Auditor → Optimizer",
+      "item": [
+        {
+          "name": "Run Performance Audit Chain",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.chainId) {",
+                  "    pm.environment.set('chainId', res.chainId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"steps\": [\n    {\n      \"prompt\": \"You are a Performance Engineer. Audit this code for: 1) N+1 queries 2) Missing indexes 3) Unnecessary data fetching 4) Blocking operations 5) Memory leaks 6) Algorithmic complexity. Rate each: Critical/Major/Minor.\\n\\nCode:\\napp.get(\\\"/dashboard\\\", async (req, res) => {\\n  const users = await User.findAll();\\n  const data = [];\\n  for (const user of users) {\\n    const orders = await Order.findAll({ where: { userId: user.id } });\\n    const reviews = await Review.findAll({ where: { userId: user.id } });\\n    let totalSpent = 0;\\n    orders.forEach(o => { totalSpent += o.items.reduce((sum, i) => sum + i.price * i.qty, 0); });\\n    data.push({ user: user.toJSON(), orderCount: orders.length, reviewCount: reviews.length, totalSpent });\\n  }\\n  globalCache[req.path] = data;\\n  res.json(data);\\n});\",\n      \"agentId\": \"perf-auditor\"\n    },\n    {\n      \"prompt\": \"You are a Senior Backend Engineer. Based on the audit, rewrite the code fixing ALL issues. Use: eager loading, pagination, proper caching with TTL, aggregation queries. Show before/after with estimated performance impact.\",\n      \"agentId\": \"perf-optimizer\",\n      \"usesPreviousResult\": true\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chain",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain"]
+            },
+            "description": "Performance audit pipeline.\n\n1. Auditor: finds N+1, memory leaks, bad complexity\n2. Optimizer: rewrites with eager loading, caching, pagination\n\nPoll /chain/:chainId to track progress."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Performance Audit Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/chain/{{chainId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain", "{{chainId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workflows: PR Review Simulation",
+      "description": "3-step pipeline: Correctness Reviewer → Robustness Reviewer → PR Author Response",
+      "item": [
+        {
+          "name": "Run PR Review Chain",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.chainId) {",
+                  "    pm.environment.set('chainId', res.chainId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"steps\": [\n    {\n      \"prompt\": \"You are reviewing a PR focused on CORRECTNESS. Check: 1) Logic errors 2) Off-by-one 3) Null handling 4) Race conditions. Only flag real problems.\\n\\nPR Code:\\nclass ApiClient {\\n  constructor(baseUrl, maxRetries = 3) {\\n    this.baseUrl = baseUrl;\\n    this.maxRetries = maxRetries;\\n  }\\n  async request(method, path, body) {\\n    let lastError;\\n    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {\\n      try {\\n        const resp = await fetch(this.baseUrl + path, {\\n          method,\\n          headers: { \\\"Content-Type\\\": \\\"application/json\\\" },\\n          body: body ? JSON.stringify(body) : undefined,\\n        });\\n        if (resp.status >= 500) throw new Error(`Server error: ${resp.status}`);\\n        if (resp.status === 429) {\\n          await this.sleep(1000 * attempt);\\n          continue;\\n        }\\n        return await resp.json();\\n      } catch (e) {\\n        lastError = e;\\n        if (attempt < this.maxRetries) await this.sleep(1000 * Math.pow(2, attempt));\\n      }\\n    }\\n    throw lastError;\\n  }\\n  sleep(ms) { return new Promise(r => setTimeout(r, ms)); }\\n}\",\n      \"agentId\": \"correctness-reviewer\"\n    },\n    {\n      \"prompt\": \"You are reviewing the same PR focused on ROBUSTNESS. Check: 1) Network timeouts? 2) Non-JSON responses? 3) Should 4xx retry? 4) AbortController? 5) Concurrent limits? Add issues the first reviewer missed.\",\n      \"agentId\": \"robustness-reviewer\",\n      \"usesPreviousResult\": true\n    },\n    {\n      \"prompt\": \"You are the PR Author. Read both reviews: 1) Acknowledge valid points 2) Push back where you disagree 3) List changes you will make 4) Show updated code.\",\n      \"agentId\": \"pr-author\",\n      \"usesPreviousResult\": true\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chain",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain"]
+            },
+            "description": "Simulated PR review.\n\n1. Correctness Reviewer: logic errors, null handling\n2. Robustness Reviewer: edge cases, timeouts\n3. PR Author: responds with fixes\n\nPoll /chain/:chainId to track progress."
+          },
+          "response": []
+        },
+        {
+          "name": "Check PR Review Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/chain/{{chainId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain", "{{chainId}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Workflows: Learning Path",
+      "description": "3-step progressive teaching: Beginner → Intermediate → Advanced",
+      "item": [
+        {
+          "name": "Run Learning Chain — Promises",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.chainId) {",
+                  "    pm.environment.set('chainId', res.chainId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"steps\": [\n    {\n      \"prompt\": \"You are a Teacher. Explain JavaScript Promises to someone who knows callbacks but never used Promises. Use simple analogies. No code yet — just the concept. Cover: what problem they solve, pending/resolved/rejected, why better than callbacks.\",\n      \"agentId\": \"teacher-beginner\"\n    },\n    {\n      \"prompt\": \"Build on the previous explanation. Teach: 1) Promise.all, Promise.race, Promise.allSettled 2) Error handling with .catch and try/catch 3) Common mistakes 4) async/await. Include code examples.\",\n      \"agentId\": \"teacher-intermediate\",\n      \"usesPreviousResult\": true\n    },\n    {\n      \"prompt\": \"Now teach advanced patterns: 1) Promise.withResolvers() 2) Retry wrapper 3) Concurrency control (N items, M parallel) 4) AbortController cancellation 5) Interview questions. Production-ready examples.\",\n      \"agentId\": \"teacher-advanced\",\n      \"usesPreviousResult\": true\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chain",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain"]
+            },
+            "description": "Progressive learning path about Promises.\n\n1. Beginner: concepts and analogies\n2. Intermediate: patterns and async/await\n3. Advanced: production patterns and interview prep\n\nPoll /chain/:chainId to track progress."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Learning Path Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/chain/{{chainId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain", "{{chainId}}"]
+            }
           },
           "response": []
         }
