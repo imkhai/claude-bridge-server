@@ -2,12 +2,12 @@
 
 ## What This Is
 
-HTTP bridge server that lets AI agents submit tasks to Claude Code CLI via HTTP. Agents POST prompts, the server queues them, spawns `claude -p` processes with concurrency control, and returns results.
+HTTP bridge server that lets AI agents submit tasks to Claude Code CLI via HTTP. Agents POST prompts, the server queues them, spawns `claude -p` processes with concurrency control, and returns results. Data is persisted to SQLite.
 
 ## Quick Reference
 
 ```bash
-npm install          # Install dependencies
+npm install          # Install dependencies (express, better-sqlite3, multer)
 npm start            # Start server on port 3210
 npm run dev          # Start with --watch (live reload)
 curl localhost:3210/health  # Verify running
@@ -16,15 +16,17 @@ curl localhost:3210/health  # Verify running
 ## Architecture
 
 ```
-HTTP Request → Express Route → Job Queue (FIFO) → claude -p (spawned process) → Result File
+HTTP Request → Express Route → Job Queue (FIFO, in-memory) → claude -p (spawned process) → Result File + SQLite
 ```
 
-- **Entry point:** `server.mjs` — Express app, route mounting, graceful shutdown
-- **Config:** `src/config.mjs` — all via env vars (BRIDGE_PORT, BIND_HOST, API_KEY, MAX_PARALLEL, TIMEOUT_MS, WORKSPACE, CLAUDE_PATH, LOG_LEVEL, DEFAULT_ALLOWED_TOOLS, DEFAULT_MAX_TURNS, MAX_QUEUE_SIZE, JOB_TTL_MS)
-- **Queue:** `src/queue.mjs` — in-memory Map, FIFO scheduling, respects MAX_PARALLEL concurrency limit
-- **Runner:** `src/claude-runner.mjs` — spawns `claude -p <prompt> --no-session-persistence`, handles timeout (SIGTERM→SIGKILL after 5s), 10MB buffer limit
-- **Routes:** `src/routes/*.mjs` — one file per endpoint
-- **Utils:** `src/utils/logger.mjs` (structured logging), `src/utils/file-manager.mjs` (workspace filesystem ops)
+- **Entry point:** `server.mjs` — Express app, route mounting, SQLite init, JSON conversation migration, graceful shutdown
+- **Config:** `src/config.mjs` — all via env vars (see Environment Variables below)
+- **Database:** `src/db.mjs` — SQLite via better-sqlite3 at `workspace/bridge.db`. Tables: `conversations`, `messages`, `jobs`, `uploaded_files`, `agent_stats`. WAL mode, prepared statement cache, auto-migration from legacy JSON conversations on startup
+- **Queue:** `src/queue.mjs` — in-memory Map for active jobs, FIFO scheduling, respects MAX_PARALLEL concurrency limit. Completed jobs are persisted to SQLite. Timeline events stored in a 100-entry ring buffer with SSE push to listeners
+- **Runner:** `src/claude-runner.mjs` — spawns `claude -p <prompt> --no-session-persistence`, handles timeout (SIGTERM→SIGKILL after 5s), 10MB buffer limit, real-time progress tracking (output bytes, stderr lines, last activity)
+- **Routes:** `src/routes/*.mjs` — one file per endpoint group
+- **Middleware:** `src/middleware/auth.mjs` (API key with timing-safe comparison, skips health/dashboard), `src/middleware/request-logger.mjs` (request duration logging)
+- **Utils:** `src/utils/logger.mjs` (structured console logging with levels), `src/utils/file-manager.mjs` (workspace directory creation, task/context/result file ops), `src/utils/validators.mjs` (input validation, path traversal prevention, tool whitelist enforcement)
 
 ## API Endpoints
 
@@ -34,7 +36,7 @@ HTTP Request → Express Route → Job Queue (FIFO) → claude -p (spawned proce
 |--------|------|---------|
 | POST | `/ask` | Submit task (async), returns taskId immediately |
 | POST | `/ask/sync` | Submit task (sync), waits for result |
-| GET | `/status/:taskId` | Get task status and result |
+| GET | `/status/:taskId` | Get task status, result, and real-time progress |
 | GET | `/progress` | Real-time progress for all running tasks |
 | GET | `/jobs` | List jobs (filter by ?status, ?agentId, ?limit) |
 | POST | `/cancel/:taskId` | Cancel queued or running task |
@@ -49,8 +51,8 @@ HTTP Request → Express Route → Job Queue (FIFO) → claude -p (spawned proce
 | GET | `/api/dashboard/agents` | Agent status derived from queue jobs |
 | GET | `/api/dashboard/chains` | Active/recent chain status |
 | GET | `/api/dashboard/timeline` | Recent events (ring buffer, 100 entries) |
-| GET | `/api/dashboard/worklog` | Completed job history |
-| GET | `/api/dashboard/leaderboard` | Per-agent performance rankings |
+| GET | `/api/dashboard/worklog` | Completed job history (from SQLite) |
+| GET | `/api/dashboard/leaderboard` | Per-agent performance rankings (from SQLite agent_stats) |
 | GET | `/api/dashboard/stream` | SSE endpoint for real-time dashboard updates |
 
 ### Chat Commander API
@@ -58,7 +60,7 @@ HTTP Request → Express Route → Job Queue (FIFO) → claude -p (spawned proce
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/api/chat/send` | Send message, auto-detect intent, spawn agents |
-| POST | `/api/chat/upload` | Upload files (images, docs, code — 50MB max) |
+| POST | `/api/chat/upload` | Upload files (max 10 files, 50MB each) |
 | GET | `/api/chat/conversations` | List all conversations |
 | GET | `/api/chat/conversations/:id` | Get single conversation with messages |
 | DELETE | `/api/chat/conversations/:id` | Delete a conversation |
@@ -72,14 +74,20 @@ HTTP Request → Express Route → Job Queue (FIFO) → claude -p (spawned proce
 queued → running → done | error | timeout | cancelled
 ```
 
+Completed jobs are persisted to the `jobs` table in SQLite. Agent performance stats are updated in `agent_stats` on completion.
+
 ## Key Design Decisions
 
 1. **ES Modules** — `"type": "module"` in package.json, all files use `.mjs` extension
-2. **No database** — all state is in-memory Maps. Jobs lost on restart.
-3. **CLAUDECODE env var** — must be deleted from spawned process env to avoid "nested session" error from Claude CLI
-4. **Context passing** — 3 methods: inline `context` field (saved to temp file), `contextFile` path, or chain `usesPreviousResult` (auto-passes previous step's result file)
-5. **Result files** — saved to `workspace/results/result-{taskId}.md` with metadata header
-6. **Chain execution** — sequential only, each step waits for previous. If a step fails, remaining steps are cancelled.
+2. **SQLite persistence** — `better-sqlite3` with WAL mode. Stores conversations, messages, completed jobs, uploaded file metadata, and agent stats. Active jobs remain in-memory Maps for speed; completed jobs persist to DB
+3. **Auto-migration** — On startup, existing JSON conversation files in `workspace/conversations/` are migrated to SQLite (one-time, skipped if DB already has data)
+4. **CLAUDECODE env var** — must be deleted from spawned process env to avoid "nested session" error from Claude CLI
+5. **Context passing** — 3 methods: inline `context` field (saved to temp file), `contextFile` path, or chain `usesPreviousResult` (auto-passes previous step's result file)
+6. **Result files** — saved to `workspace/results/result-{taskId}.md` with metadata header
+7. **Chain execution** — sequential only, each step waits for previous. If a step fails, remaining steps are cancelled
+8. **Progress tracking** — `claude-runner.mjs` tracks output bytes, stderr lines, and last activity per process. Available via `/status/:taskId` and `/progress` endpoints
+9. **Chat intent detection** — keyword + file type analysis routes messages to agent patterns: bug-report, implementation, implementation-with-spec, review, bugfix, design, documentation, research, general
+10. **CHAT_WORKING_DIR** — Chat agents use `CHAT_WORKING_DIR` env var (falls back to `WORKSPACE`) so they can operate on project source outside the workspace directory
 
 ## Working with the Code
 
@@ -90,11 +98,15 @@ queued → running → done | error | timeout | cancelled
 
 ### Modifying queue behavior
 
-All queue logic is in `src/queue.mjs`. The `executeJob()` function handles the full lifecycle: save task → save context → run claude → save result → update job state.
+All queue logic is in `src/queue.mjs`. The `executeJob()` function handles the full lifecycle: save task → save context → run claude → save result → update job state → persist to SQLite.
 
 ### Modifying how Claude is invoked
 
-Edit `src/claude-runner.mjs`. The `runClaude()` function builds the args array and spawns the process. Context is injected by prepending to the prompt: `"Read the file at ${contextFile} for context. Then: ${prompt}"`.
+Edit `src/claude-runner.mjs`. The `runClaude()` function builds the args array and spawns the process. Context is injected via XML-delimited path in the prompt: `<context-file>path</context-file>`.
+
+### Modifying the database schema
+
+Edit `createTables()` in `src/db.mjs`. Tables use `CREATE TABLE IF NOT EXISTS` so new columns require migration logic or a fresh DB.
 
 ## Testing
 
@@ -122,36 +134,39 @@ All tests are bash scripts using curl + python3 for JSON parsing. Total: 119 ass
 | `API_KEY` | _(none)_ | API key for auth (disabled if unset) |
 | `MAX_PARALLEL` | `4` | Max concurrent claude processes |
 | `TIMEOUT_MS` | `600000` | Per-task timeout (10 min) |
-| `WORKSPACE` | `./workspace` | Root directory for all files |
+| `WORKSPACE` | `./workspace` | Root directory for all files and SQLite DB |
 | `CLAUDE_PATH` | `claude` | Path to claude CLI binary |
 | `LOG_LEVEL` | `info` | debug, info, warn, error |
 | `DEFAULT_ALLOWED_TOOLS` | _(none)_ | Default tools for all tasks (comma-separated or `all`) |
 | `DEFAULT_MAX_TURNS` | `0` | Default max agentic turns (0 = unlimited) |
 | `MAX_QUEUE_SIZE` | `1000` | Max jobs in queue |
-| `JOB_TTL_MS` | `3600000` | Job time-to-live (1 hour) |
+| `JOB_TTL_MS` | `3600000` | Job time-to-live in memory (1 hour) |
+| `CHAT_WORKING_DIR` | _(WORKSPACE)_ | Working directory for Chat Commander agents (allows operating outside workspace) |
 
 ## Workspace Layout
 
 ```
 workspace/
+├── bridge.db        # SQLite database (conversations, messages, jobs, agent_stats, uploaded_files)
 ├── tasks/           # Saved prompts (task-{id}.md)
 ├── results/         # Claude output (result-{id}.md)
 ├── contexts/        # Temp context files (context-{id}.md)
 ├── shared/          # Shared documents between agents
 ├── uploads/         # Files uploaded via Chat Commander
-└── conversations/   # Chat conversation JSON files
+└── conversations/   # Legacy JSON conversation files (migrated to SQLite on startup)
 ```
 
 ## Chat Commander
 
 Accessible at `/chat`. A conversational interface that auto-routes requests to specialized agent teams.
 
-- **Intent detection** — analyzes message keywords and attached files to select an agent pattern (bug-report, implementation, review, bugfix, design, documentation, research, general)
+- **Intent detection** — analyzes message keywords and attached files to select an agent pattern (bug-report, implementation-with-spec, implementation, review, bugfix, design, documentation, research, general)
 - **Agent routing** — spawns single agents, sequential chains, or parallel teams based on intent
-- **File upload** — supports images, docs, code files (50MB max, filtered extensions)
-- **Conversation history** — persisted as JSON in `workspace/conversations/`
+- **File upload** — supports images, docs, code files (50MB max per file, 10 files max, filtered by extension whitelist)
+- **Conversation history** — persisted in SQLite (conversations + messages tables)
 - **Real-time updates** — SSE stream per conversation for live agent status and messages
 - **Image analysis** — if images are attached with a bug report, an image-analyzer agent runs first
+- **Agent roles** — built-in role prompts for: architect, frontend-engineer, backend-engineer, integration-engineer, senior-engineer, investigator, qa-reviewer, security-auditor, tech-lead, ui-architect, researcher, documentation-agent, general-agent, image-analyzer
 
 ## Workflow Rules — ALWAYS FOLLOW
 
@@ -198,3 +213,4 @@ Parallel: character-animator + desk-artist + environment-engineer + interaction-
 - **Claude CLI not found**: ensure `claude` is in PATH or set `CLAUDE_PATH`
 - **Nested session error**: the runner deletes `CLAUDECODE` env var to prevent this — don't revert that
 - **`--no-input` flag**: doesn't exist in Claude CLI, use `--no-session-persistence` instead
+- **SQLite locked**: ensure only one server instance is running per workspace
