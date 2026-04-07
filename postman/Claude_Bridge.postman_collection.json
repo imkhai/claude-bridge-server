@@ -1,0 +1,333 @@
+{
+  "info": {
+    "name": "Claude Bridge Server",
+    "description": "API collection for Claude Bridge — an HTTP bridge between OpenClaw agents and Claude Code CLI.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [],
+  "item": [
+    {
+      "name": "Health & Status",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Check server health, uptime, active/queued counts, and workspace path."
+          },
+          "response": []
+        },
+        {
+          "name": "List All Jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/jobs?status=&agentId=&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["jobs"],
+              "query": [
+                { "key": "status", "value": "", "description": "Filter: queued, running, done, error, cancelled, timeout" },
+                { "key": "agentId", "value": "", "description": "Filter by agent ID" },
+                { "key": "limit", "value": "50", "description": "Max results (default 50)" }
+              ]
+            },
+            "description": "List all jobs with optional filters."
+          },
+          "response": []
+        },
+        {
+          "name": "List Jobs — Done Only",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/jobs?status=done",
+              "host": ["{{baseUrl}}"],
+              "path": ["jobs"],
+              "query": [
+                { "key": "status", "value": "done" }
+              ]
+            },
+            "description": "List only completed jobs."
+          },
+          "response": []
+        },
+        {
+          "name": "List Jobs — By Agent",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/jobs?agentId={{agentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["jobs"],
+              "query": [
+                { "key": "agentId", "value": "{{agentId}}" }
+              ]
+            },
+            "description": "List jobs for a specific agent."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Tasks",
+      "item": [
+        {
+          "name": "Submit Task (Async)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.taskId) {",
+                  "    pm.collectionVariables.set('taskId', res.taskId);",
+                  "    pm.environment.set('taskId', res.taskId);",
+                  "    console.log('Saved taskId:', res.taskId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Say hello in 3 languages\",\n  \"agentId\": \"{{agentId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ask",
+              "host": ["{{baseUrl}}"],
+              "path": ["ask"]
+            },
+            "description": "Submit a task asynchronously. Returns taskId immediately — poll /status/:taskId for the result.\n\nAuto-saves taskId to environment variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Task (Sync — Wait for Result)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.taskId) {",
+                  "    pm.environment.set('taskId', res.taskId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"What is 2+2? Answer in one word.\",\n  \"agentId\": \"{{agentId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ask/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["ask", "sync"]
+            },
+            "description": "Submit a task and wait for the full result. Response includes result text, duration, resultFile path.\n\n⚠️ This can take a long time — increase Postman timeout to 10+ minutes."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Task with Inline Context",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Summarize this code and explain what it does\",\n  \"agentId\": \"reviewer\",\n  \"context\": \"function fibonacci(n) {\\n  if (n <= 1) return n;\\n  return fibonacci(n - 1) + fibonacci(n - 2);\\n}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ask/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["ask", "sync"]
+            },
+            "description": "Submit a task with inline context text. The bridge saves it to a temp file and passes it to Claude."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Task with Context File",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Review and improve this document\",\n  \"agentId\": \"reviewer\",\n  \"contextFile\": \"workspace/results/result-{{taskId}}.md\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ask/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["ask", "sync"]
+            },
+            "description": "Submit a task referencing an existing file (e.g., a previous task's result) as context."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Task with Working Directory",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"List all JavaScript files and describe the project structure\",\n  \"agentId\": \"explorer\",\n  \"workingDir\": \"/Users/khainguyen/ws_me/claude-bridge-server\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/ask/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["ask", "sync"]
+            },
+            "description": "Submit a task with a custom working directory for the Claude process."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Task Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/status/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["status", "{{taskId}}"]
+            },
+            "description": "Poll this after submitting an async task. Returns full job details including result when done."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Task",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/cancel/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["cancel", "{{taskId}}"]
+            },
+            "description": "Cancel a queued or running task. Sends SIGTERM to the Claude process."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Chains",
+      "item": [
+        {
+          "name": "Submit Chain — Research → Write → Review",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.chainId) {",
+                  "    pm.environment.set('chainId', res.chainId);",
+                  "    console.log('Saved chainId:', res.chainId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"steps\": [\n    {\n      \"prompt\": \"Research the top 5 React state management libraries in 2026\",\n      \"agentId\": \"researcher\"\n    },\n    {\n      \"prompt\": \"Based on the previous research, write a comparison table in markdown\",\n      \"agentId\": \"writer\",\n      \"usesPreviousResult\": true\n    },\n    {\n      \"prompt\": \"Review the comparison and add a recommendation section\",\n      \"agentId\": \"reviewer\",\n      \"usesPreviousResult\": true\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chain",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain"]
+            },
+            "description": "Submit a multi-step chain. Each step runs sequentially. Steps with usesPreviousResult=true receive the previous step's output as context.\n\nAuto-saves chainId to environment variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Chain — Translate Pipeline",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.chainId) {",
+                  "    pm.environment.set('chainId', res.chainId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"steps\": [\n    {\n      \"prompt\": \"Write a haiku about coding\",\n      \"agentId\": \"poet\"\n    },\n    {\n      \"prompt\": \"Translate the previous haiku to Vietnamese\",\n      \"agentId\": \"translator\",\n      \"usesPreviousResult\": true\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chain",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain"]
+            },
+            "description": "A simple 2-step chain: create content then translate it."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Chain Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/chain/{{chainId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["chain", "{{chainId}}"]
+            },
+            "description": "Check progress of a chain. Shows current step and per-step status/duration."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
