@@ -190,10 +190,9 @@ function pushSSE(conversationId, event, data) {
 // CHAT_WORKING_DIR allows chat agents to work outside workspace (e.g., on project source)
 // Falls back to WORKSPACE if not set
 const WORKING_DIR = process.env.CHAT_WORKING_DIR || config.WORKSPACE;
-const CHAT_REQUESTED_TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'];
+const CHAT_REQUESTED_TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep'];
 
 // Gate chat tools through the same server policy as API requests.
-// If DEFAULT_ALLOWED_TOOLS is unset, Bash will be stripped by the validator.
 let DEFAULT_TOOLS;
 try {
   DEFAULT_TOOLS = validateAllowedTools(CHAT_REQUESTED_TOOLS) || CHAT_REQUESTED_TOOLS;

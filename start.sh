@@ -7,12 +7,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Defaults (override with env vars)
-export WORKSPACE="${WORKSPACE:-$SCRIPT_DIR/bridge-data}"
-export BIND_HOST="${BIND_HOST:-0.0.0.0}"
+echo $HOME
+export WORKSPACE="$HOME/prod-data/bridge-data"
+export BIND_HOST="${BIND_HOST:-127.0.0.1}"
 export BRIDGE_PORT="${BRIDGE_PORT:-3210}"
 export MAX_PARALLEL="${MAX_PARALLEL:-8}"
 export TIMEOUT_MS="${TIMEOUT_MS:-900000}"
-export DEFAULT_ALLOWED_TOOLS="${DEFAULT_ALLOWED_TOOLS:-all}"
+export DEFAULT_ALLOWED_TOOLS="${DEFAULT_ALLOWED_TOOLS:-}"
 export CHAT_WORKING_DIR="${CHAT_WORKING_DIR:-$SCRIPT_DIR}"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 
