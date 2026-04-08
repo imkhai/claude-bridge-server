@@ -6,7 +6,7 @@ export const config = {
   API_KEY: process.env.API_KEY || '',
   MAX_PARALLEL: parseInt(process.env.MAX_PARALLEL, 10) || 4,
   TIMEOUT_MS: parseInt(process.env.TIMEOUT_MS, 10) || 600000,
-  WORKSPACE: process.env.WORKSPACE || resolve('./bridge-data'),
+  WORKSPACE: process.env.WORKSPACE || resolve(process.env.HOME, 'prod-data/bridge-data'),
   CLAUDE_PATH: process.env.CLAUDE_PATH || 'claude',
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
   // Default allowed tools for Claude CLI. Set to comma-separated list or "all" for full access.
@@ -17,4 +17,11 @@ export const config = {
   // Queue limits
   MAX_QUEUE_SIZE: parseInt(process.env.MAX_QUEUE_SIZE, 10) || 1000,
   JOB_TTL_MS: parseInt(process.env.JOB_TTL_MS, 10) || 3600000, // 1 hour
+
+  // Telegram Bot
+  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
+  TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
+  TELEGRAM_WEBHOOK_URL: process.env.TELEGRAM_WEBHOOK_URL || '',
+  TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET || '',
+  TELEGRAM_NOTIFY_EVENTS: process.env.TELEGRAM_NOTIFY_EVENTS || 'task_done,task_error,task_timeout',
 };

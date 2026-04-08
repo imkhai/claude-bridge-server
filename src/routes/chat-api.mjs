@@ -1,13 +1,20 @@
-import crypto from 'crypto';
 import { Router } from 'express';
 import { readdir, stat } from 'fs/promises';
 import { join, extname } from 'path';
 import multer from 'multer';
 import { config } from '../config.mjs';
-import { queue, onTimelineEvent } from '../queue.mjs';
+import { onTimelineEvent } from '../queue.mjs';
 import { logger } from '../utils/logger.mjs';
 import * as db from '../db.mjs';
-import { validateAllowedTools } from '../utils/validators.mjs';
+import {
+  newId,
+  loadConversation,
+  persistConversation,
+  persistMessage,
+  generateTitle,
+  detectIntent,
+  spawnAgents,
+} from '../chat-engine.mjs';
 
 export const chatRouter = Router();
 
@@ -49,124 +56,6 @@ const upload = multer({
 });
 
 // ---------------------------------------------------------------------------
-// Helpers — conversation storage (backed by SQLite)
-// ---------------------------------------------------------------------------
-
-function newId(prefix) {
-  return `${prefix}-${crypto.randomUUID().slice(0, 12)}`;
-}
-
-function loadConversation(id) {
-  return db.getConversation(id);
-}
-
-function persistConversation(conv) {
-  db.saveConversation(conv);
-}
-
-function persistMessage(conversationId, msg) {
-  db.addMessage(conversationId, msg);
-}
-
-function generateTitle(message) {
-  // First 60 chars of first sentence, cleaned up
-  const clean = message.replace(/\n/g, ' ').trim();
-  if (clean.length <= 60) return clean;
-  return clean.slice(0, 57) + '...';
-}
-
-// ---------------------------------------------------------------------------
-// Intent detection
-// ---------------------------------------------------------------------------
-const IMAGE_RE = /\.(png|jpg|jpeg|gif|webp)$/i;
-const DOC_RE = /\.(md|txt|pdf)$/i;
-
-function detectIntent(message, files = []) {
-  const lower = message.toLowerCase();
-  const hasImages = files.some(f => IMAGE_RE.test(f));
-  const hasDocs = files.some(f => DOC_RE.test(f));
-
-  // Bug report with screenshot
-  if (hasImages && /bug|issue|fix|broken|error|wrong|crash/i.test(lower)) {
-    return {
-      pattern: 'bug-report',
-      agents: ['image-analyzer', 'investigator', 'senior-engineer', 'qa-reviewer', 'code-reviewer'],
-      method: 'chain',
-    };
-  }
-
-  // Implementation with spec document
-  if (hasDocs && /implement|build|create/i.test(lower)) {
-    return {
-      pattern: 'implementation-with-spec',
-      agents: ['architect', 'backend-engineer', 'frontend-engineer', 'qa-reviewer', 'code-reviewer'],
-      method: 'chain',
-    };
-  }
-
-  // Implementation
-  if (/implement|build|create|add feature/i.test(lower)) {
-    return {
-      pattern: 'implementation',
-      agents: ['architect', 'frontend-engineer', 'integration-engineer', 'code-reviewer'],
-      method: 'chain',
-    };
-  }
-
-  // Review / audit
-  if (/review|audit|security/i.test(lower)) {
-    return {
-      pattern: 'review',
-      agents: ['security-auditor', 'tech-lead', 'senior-engineer', 'qa-reviewer'],
-      method: 'chain',
-    };
-  }
-
-  // Bug fix (no screenshot)
-  if (/fix|bug|broken|error|crash|issue/i.test(lower)) {
-    return {
-      pattern: 'bugfix',
-      agents: ['investigator', 'senior-engineer', 'qa-reviewer', 'code-reviewer'],
-      method: 'chain',
-    };
-  }
-
-  // Design / UI
-  if (/design|ui |ux |layout|style|css/i.test(lower)) {
-    return {
-      pattern: 'design',
-      agents: ['ui-architect', 'frontend-engineer'],
-      method: 'chain',
-    };
-  }
-
-  // Documentation
-  if (/doc|readme|update doc|write doc/i.test(lower)) {
-    return {
-      pattern: 'documentation',
-      agents: ['documentation-agent'],
-      method: 'single',
-    };
-  }
-
-  // Research / explanation
-  if (/explain|what is|how does|how do|why does|why do|tell me about/i.test(lower)) {
-    return {
-      pattern: 'research',
-      agents: ['researcher'],
-      method: 'single',
-    };
-  }
-
-  // Default: general agent
-  return {
-    pattern: 'general',
-    agents: ['general-agent'],
-    method: 'single',
-  };
-}
-
-// ---------------------------------------------------------------------------
 // SSE connections per conversation
 // ---------------------------------------------------------------------------
 const sseClients = new Map(); // conversationId -> Set<res>
@@ -182,269 +71,6 @@ function pushSSE(conversationId, event, data) {
       // client disconnected
     }
   }
-}
-
-// ---------------------------------------------------------------------------
-// Agent orchestration
-// ---------------------------------------------------------------------------
-// CHAT_WORKING_DIR allows chat agents to work outside workspace (e.g., on project source)
-// Falls back to WORKSPACE if not set
-const WORKING_DIR = process.env.CHAT_WORKING_DIR || config.WORKSPACE;
-const CHAT_REQUESTED_TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'];
-
-// Gate chat tools through the same server policy as API requests.
-// If DEFAULT_ALLOWED_TOOLS is unset, Bash will be stripped by the validator.
-let DEFAULT_TOOLS;
-try {
-  DEFAULT_TOOLS = validateAllowedTools(CHAT_REQUESTED_TOOLS) || CHAT_REQUESTED_TOOLS;
-} catch {
-  // Some tools were denied by server policy — use only the permitted ones
-  DEFAULT_TOOLS = CHAT_REQUESTED_TOOLS.filter(t => {
-    try { validateAllowedTools([t]); return true; } catch { return false; }
-  });
-}
-
-async function spawnAgents(conv, routing, userMessage, files) {
-  try {
-    const { pattern, agents, method } = routing;
-    const taskIds = [];
-
-    // If images present, prepend image-analyzer if not already first
-    const hasImages = files.some(f => IMAGE_RE.test(f));
-    let imageAnalysis = null;
-
-    if (hasImages && agents[0] !== 'image-analyzer') {
-      // Spawn image analyzer first
-      const imagePaths = files.filter(f => IMAGE_RE.test(f));
-      const analyzerResult = await runSingleAgent(
-        'image-analyzer',
-        `Analyze these images and describe what you see in detail: ${imagePaths.join(', ')}. Then explain how they relate to this request: "${userMessage}"`,
-        null,
-        conv.id,
-      );
-      taskIds.push(analyzerResult.taskId);
-      imageAnalysis = analyzerResult.result;
-
-      // Add agent message to conversation
-      const agentMsg = {
-        id: newId('msg'),
-        role: 'agent',
-        agentId: 'image-analyzer',
-        content: analyzerResult.result || analyzerResult.error || 'Image analysis failed',
-        taskId: analyzerResult.taskId,
-        duration: analyzerResult.duration,
-        status: analyzerResult.status,
-        timestamp: new Date().toISOString(),
-      };
-      conv.messages.push(agentMsg);
-      persistMessage(conv.id, agentMsg);
-      persistConversation(conv);
-      pushSSE(conv.id, 'agent-message', agentMsg);
-    }
-
-    // Build context from files + image analysis
-    let baseContext = '';
-    if (imageAnalysis) {
-      baseContext += `## Image Analysis\n${imageAnalysis}\n\n`;
-    }
-    const nonImageFiles = files.filter(f => !IMAGE_RE.test(f));
-    if (nonImageFiles.length > 0) {
-      baseContext += `## Reference Files\nThe user attached these files: ${nonImageFiles.join(', ')}. Read them for context.\n\n`;
-    }
-
-    // Filter out image-analyzer from remaining agents if we already ran it
-    const remainingAgents = agents.filter(a => a !== 'image-analyzer');
-
-    if (method === 'chain') {
-      await runChainAgents(conv, remainingAgents, userMessage, baseContext, taskIds);
-    } else if (method === 'parallel') {
-      await runParallelAgents(conv, remainingAgents, userMessage, baseContext, taskIds);
-    } else {
-      // single
-      await runSingleAgentFlow(conv, remainingAgents[0], userMessage, baseContext, taskIds);
-    }
-
-    // Final completion event
-    pushSSE(conv.id, 'complete', { conversationId: conv.id });
-  } catch (err) {
-    logger.error(`spawnAgents crashed: ${err.message}`, { conversationId: conv.id, stack: err.stack });
-    pushSSE(conv.id, 'error', { error: `Agent orchestration failed: ${err.message}` });
-    pushSSE(conv.id, 'complete', { conversationId: conv.id, error: err.message });
-  }
-}
-
-async function runSingleAgent(agentId, prompt, contextContent, conversationId) {
-  const params = {
-    prompt,
-    agentId,
-    workingDir: WORKING_DIR,
-    allowedTools: DEFAULT_TOOLS,
-  };
-  if (contextContent) {
-    params.context = contextContent;
-  }
-
-  pushSSE(conversationId, 'agent-status', { agentId, status: 'running' });
-
-  let job;
-  try {
-    job = await queue.submitAndWait(params);
-  } catch (err) {
-    logger.error(`Agent ${agentId} queue error: ${err.message}`, { conversationId });
-    pushSSE(conversationId, 'agent-status', {
-      agentId,
-      status: 'error',
-      duration: 0,
-      taskId: null,
-    });
-    return {
-      taskId: null,
-      result: null,
-      error: err.message,
-      status: 'error',
-      duration: 0,
-      resultFile: null,
-    };
-  }
-
-  pushSSE(conversationId, 'agent-status', {
-    agentId,
-    status: job.status,
-    duration: job.duration,
-    taskId: job.taskId,
-  });
-
-  return {
-    taskId: job.taskId,
-    result: job.result,
-    error: job.error,
-    status: job.status,
-    duration: job.duration,
-    resultFile: job.resultFile,
-  };
-}
-
-async function runChainAgents(conv, agents, userMessage, baseContext, taskIds) {
-  let previousResult = baseContext;
-
-  for (const agentId of agents) {
-    const prompt = buildAgentPrompt(agentId, userMessage, previousResult);
-
-    pushSSE(conv.id, 'agent-status', { agentId, status: 'running' });
-
-    const result = await runSingleAgent(agentId, prompt, previousResult || null, conv.id);
-    taskIds.push(result.taskId);
-
-    const agentMsg = {
-      id: newId('msg'),
-      role: 'agent',
-      agentId,
-      content: result.result || result.error || `Agent ${agentId} failed`,
-      taskId: result.taskId,
-      duration: result.duration,
-      status: result.status,
-      timestamp: new Date().toISOString(),
-    };
-    conv.messages.push(agentMsg);
-    persistMessage(conv.id, agentMsg);
-    persistConversation(conv);
-    pushSSE(conv.id, 'agent-message', agentMsg);
-
-    if (result.status !== 'done') {
-      // Chain breaks on failure
-      pushSSE(conv.id, 'agent-error', {
-        agentId,
-        error: result.error || 'Agent failed',
-      });
-      break;
-    }
-
-    // Pass result as context to next agent
-    previousResult = result.result;
-  }
-}
-
-async function runParallelAgents(conv, agents, userMessage, baseContext, taskIds) {
-  const promises = agents.map(agentId => {
-    const prompt = buildAgentPrompt(agentId, userMessage, baseContext);
-    return runSingleAgent(agentId, prompt, baseContext || null, conv.id)
-      .then(result => ({ agentId, ...result }));
-  });
-
-  const results = await Promise.allSettled(promises);
-
-  for (const settled of results) {
-    if (settled.status === 'fulfilled') {
-      const { agentId, taskId, result, error, status, duration } = settled.value;
-      taskIds.push(taskId);
-
-      const agentMsg = {
-        id: newId('msg'),
-        role: 'agent',
-        agentId,
-        content: result || error || `Agent ${agentId} failed`,
-        taskId,
-        duration,
-        status,
-        timestamp: new Date().toISOString(),
-      };
-      conv.messages.push(agentMsg);
-      persistMessage(conv.id, agentMsg);
-      pushSSE(conv.id, 'agent-message', agentMsg);
-    }
-  }
-
-  persistConversation(conv);
-}
-
-async function runSingleAgentFlow(conv, agentId, userMessage, baseContext, taskIds) {
-  const prompt = buildAgentPrompt(agentId, userMessage, baseContext);
-  const result = await runSingleAgent(agentId, prompt, baseContext || null, conv.id);
-  taskIds.push(result.taskId);
-
-  const agentMsg = {
-    id: newId('msg'),
-    role: 'agent',
-    agentId,
-    content: result.result || result.error || `Agent ${agentId} failed`,
-    taskId: result.taskId,
-    duration: result.duration,
-    status: result.status,
-    timestamp: new Date().toISOString(),
-  };
-  conv.messages.push(agentMsg);
-  persistMessage(conv.id, agentMsg);
-  persistConversation(conv);
-  pushSSE(conv.id, 'agent-message', agentMsg);
-}
-
-function buildAgentPrompt(agentId, userMessage, previousContext) {
-  const rolePrompts = {
-    'architect': `You are a senior software architect. Analyze this request and create a detailed implementation plan with file structure, key decisions, and step-by-step approach.`,
-    'frontend-engineer': `You are a senior frontend engineer. Implement the frontend code based on the plan or request. Write clean, production-ready code. After making code changes, create a feature branch (e.g. feat/description or fix/description), stage and commit your changes with a clear commit message. NEVER add Co-Authored-By or any AI signature lines to commits. Push the branch and create a PR with gh pr create --title <title> --body <description>. Do NOT merge the PR yourself - the code-reviewer will handle that.`,
-    'backend-engineer': `You are a senior backend engineer. Implement the server-side code based on the plan or request. Write clean, production-ready code. After making code changes, create a feature branch (e.g. feat/description or fix/description), stage and commit your changes with a clear commit message. NEVER add Co-Authored-By or any AI signature lines to commits. Push the branch and create a PR with gh pr create --title <title> --body <description>. Do NOT merge the PR yourself - the code-reviewer will handle that.`,
-    'integration-engineer': `You are an integration engineer. Review the implementation, ensure all parts work together, run tests if applicable, and fix any issues. After making code changes, create a feature branch (e.g. feat/description or fix/description), stage and commit your changes with a clear commit message. NEVER add Co-Authored-By or any AI signature lines to commits. Push the branch and create a PR with gh pr create --title <title> --body <description>. Do NOT merge the PR yourself - the code-reviewer will handle that.`,
-    'senior-engineer': `You are a senior software engineer. Implement the fix or feature with production-quality code. Consider edge cases and error handling. After making code changes, create a feature branch (e.g. feat/description or fix/description), stage and commit your changes with a clear commit message. NEVER add Co-Authored-By or any AI signature lines to commits. Push the branch and create a PR with gh pr create --title <title> --body <description>. Do NOT merge the PR yourself - the code-reviewer will handle that.`,
-    'investigator': `You are a bug investigator. Analyze the issue, search the codebase for root causes, and document your findings with specific file paths and line numbers.`,
-    'qa-reviewer': `You are a QA reviewer. Review the changes made, verify correctness, check for edge cases, and confirm the implementation meets requirements.`,
-    'security-auditor': `You are a security auditor. Perform a thorough security review of the code. Look for vulnerabilities (OWASP Top 10), injection risks, auth issues, and data exposure.`,
-    'tech-lead': `You are a tech lead. Review the findings and prioritize the issues. Create an action plan for fixes.`,
-    'ui-architect': `You are a UI/UX architect. Design the user interface, layout, color scheme, and interaction patterns. Provide detailed specs.`,
-    'researcher': `You are a research engineer. Analyze the codebase thoroughly to answer the question. Provide clear, detailed explanations with references to specific code.`,
-    'documentation-agent': `You are a documentation specialist. Write clear, comprehensive documentation.`,
-    'general-agent': `You are a helpful software engineering assistant. Handle this request thoroughly.`,
-    'code-reviewer': `You are a senior code reviewer. Review the pull request created by the engineering team. Use gh pr list to find recent PRs, gh pr diff <number> to review the code changes, and gh pr view <number> for details. If the code looks good, approve with gh pr review <number> --approve and merge with gh pr merge <number> --merge --delete-branch. If you find issues, request changes with gh pr review <number> --request-changes --body <your feedback>.`,
-    'image-analyzer': `You are an image analysis specialist. Describe the image contents in detail.`,
-  };
-
-  const role = rolePrompts[agentId] || rolePrompts['general-agent'];
-  let prompt = `${role}\n\n## User Request\n${userMessage}`;
-
-  if (previousContext) {
-    prompt += `\n\n## Previous Context\n${previousContext}`;
-  }
-
-  return prompt;
 }
 
 // ---------------------------------------------------------------------------
@@ -516,7 +142,9 @@ chatRouter.post('/api/chat/send', async (req, res, next) => {
     // Spawn agents in background (don't await — results come via SSE)
     pushSSE(conv.id, 'routing', { routing, conversationId: conv.id });
 
-    spawnAgents(conv, routing, trimmedMessage, files).catch(err => {
+    const pushUpdate = (event, data) => pushSSE(conv.id, event, data);
+
+    spawnAgents(conv, routing, trimmedMessage, files, pushUpdate).catch(err => {
       logger.error(`Agent orchestration failed: ${err.message}`, { conversationId: conv.id });
       pushSSE(conv.id, 'error', { error: err.message });
     });
@@ -622,7 +250,6 @@ chatRouter.get('/api/chat/files', async (req, res, next) => {
       }
     }
 
-    // Sort by createdAt descending
     fileList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     res.json({ files: fileList });
@@ -642,16 +269,13 @@ chatRouter.get('/api/chat/stream/:conversationId', (req, res) => {
     'X-Accel-Buffering': 'no',
   });
 
-  // Send initial heartbeat
   res.write(`event: connected\ndata: ${JSON.stringify({ conversationId })}\n\n`);
 
-  // Register this client
   if (!sseClients.has(conversationId)) {
     sseClients.set(conversationId, new Set());
   }
   sseClients.get(conversationId).add(res);
 
-  // Also forward timeline events relevant to this conversation
   const unsubscribe = onTimelineEvent(event => {
     try {
       res.write(`event: timeline\ndata: ${JSON.stringify(event)}\n\n`);
@@ -660,7 +284,6 @@ chatRouter.get('/api/chat/stream/:conversationId', (req, res) => {
     }
   });
 
-  // Heartbeat to keep connection alive
   const heartbeat = setInterval(() => {
     try {
       res.write(`event: heartbeat\ndata: ${JSON.stringify({ time: Date.now() })}\n\n`);
@@ -669,7 +292,6 @@ chatRouter.get('/api/chat/stream/:conversationId', (req, res) => {
     }
   }, 15000);
 
-  // Cleanup on disconnect
   req.on('close', () => {
     clearInterval(heartbeat);
     unsubscribe();
