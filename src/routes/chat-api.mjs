@@ -197,10 +197,25 @@ let DEFAULT_TOOLS;
 try {
   DEFAULT_TOOLS = validateAllowedTools(CHAT_REQUESTED_TOOLS) || CHAT_REQUESTED_TOOLS;
 } catch {
-  // Some tools were denied by server policy — use only the permitted ones
   DEFAULT_TOOLS = CHAT_REQUESTED_TOOLS.filter(t => {
     try { validateAllowedTools([t]); return true; } catch { return false; }
   });
+}
+
+// Agents that need Bash for git/gh CLI operations (PRs, merges, commits)
+const BASH_AGENTS = new Set([
+  'code-reviewer',       // gh pr review, gh pr merge
+  'frontend-engineer',   // git commit, git push, gh pr create
+  'backend-engineer',    // git commit, git push, gh pr create
+  'senior-engineer',     // git commit, git push, gh pr create
+  'integration-engineer', // git commit, git push, gh pr create
+]);
+
+function getToolsForAgent(agentId) {
+  if (BASH_AGENTS.has(agentId)) {
+    return [...DEFAULT_TOOLS, 'Bash'];
+  }
+  return DEFAULT_TOOLS;
 }
 
 async function spawnAgents(conv, routing, userMessage, files) {
@@ -277,7 +292,7 @@ async function runSingleAgent(agentId, prompt, contextContent, conversationId) {
     prompt,
     agentId,
     workingDir: WORKING_DIR,
-    allowedTools: DEFAULT_TOOLS,
+    allowedTools: getToolsForAgent(agentId),
   };
   if (contextContent) {
     params.context = contextContent;
