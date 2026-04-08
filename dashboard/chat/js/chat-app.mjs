@@ -21,6 +21,77 @@ const sendBtn = document.getElementById('sendBtn');
 const welcomeScreen = document.getElementById('welcomeScreen');
 const typingIndicator = document.getElementById('typingIndicator');
 
+// ===== Mobile Helpers =====
+const isMobile = () => window.innerWidth <= 768;
+
+function initMobile() {
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebarBackdrop');
+  const hamburger = document.getElementById('hamburgerBtn');
+
+  // Hamburger toggle
+  hamburger.addEventListener('click', () => {
+    const isOpen = sidebar.classList.contains('mobile-open');
+    if (isOpen) {
+      closeMobileSidebar();
+    } else {
+      sidebar.classList.add('mobile-open');
+      sidebar.classList.remove('collapsed');
+      backdrop.classList.add('visible');
+    }
+  });
+
+  // Backdrop closes sidebar
+  backdrop.addEventListener('click', closeMobileSidebar);
+
+  // Close sidebar on conversation select (mobile)
+  sidebar.addEventListener('click', (e) => {
+    if (isMobile() && e.target.closest('.conv-item')) {
+      closeMobileSidebar();
+    }
+  });
+}
+
+function closeMobileSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebarBackdrop');
+  sidebar.classList.remove('mobile-open');
+  backdrop.classList.remove('visible');
+}
+
+function initVirtualKeyboard() {
+  if (!window.visualViewport) return;
+
+  const appLayout = document.querySelector('.app-layout');
+  const inputArea = document.querySelector('.chat-input-area');
+
+  window.visualViewport.addEventListener('resize', () => {
+    // Detect keyboard: visual viewport significantly shorter than layout viewport
+    const keyboardHeight = window.innerHeight - window.visualViewport.height;
+    const isKeyboardOpen = keyboardHeight > 100;
+
+    if (isKeyboardOpen) {
+      document.body.classList.add('keyboard-open');
+      // Adjust app layout height to account for keyboard
+      appLayout.style.height = `${window.visualViewport.height - document.querySelector('.header').offsetHeight}px`;
+      // Scroll input into view
+      requestAnimationFrame(() => {
+        inputArea.scrollIntoView({ block: 'end', behavior: 'smooth' });
+      });
+    } else {
+      document.body.classList.remove('keyboard-open');
+      appLayout.style.height = '';
+    }
+  });
+
+  window.visualViewport.addEventListener('scroll', () => {
+    // Prevent visual viewport from scrolling away from input when keyboard is open
+    if (document.body.classList.contains('keyboard-open')) {
+      window.scrollTo(0, 0);
+    }
+  });
+}
+
 // ===== Initialize =====
 function init() {
   // Init modules
@@ -85,6 +156,10 @@ function init() {
       // Mode functionality can be extended
     });
   });
+
+  // Mobile: hamburger, backdrop, virtual keyboard
+  initMobile();
+  initVirtualKeyboard();
 
   chatInput.focus();
 }

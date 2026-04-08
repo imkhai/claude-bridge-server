@@ -39,6 +39,7 @@
 
 html, body {
   height: 100%;
+  height: 100dvh;
   overflow: hidden;
   font-family: var(--font);
   font-size: 14px;
@@ -171,10 +172,48 @@ html, body {
   color: var(--text);
 }
 
+/* ===== HAMBURGER (mobile only) ===== */
+.hamburger-btn {
+  display: none;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hamburger-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* ===== SIDEBAR BACKDROP (mobile) ===== */
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+  z-index: 39;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sidebar-backdrop.visible {
+  display: block;
+}
+
 /* ===== APP LAYOUT ===== */
 .app-layout {
   display: flex;
   height: calc(100vh - var(--header-height));
+  height: calc(100dvh - var(--header-height));
   overflow: hidden;
 }
 
@@ -1129,7 +1168,7 @@ html, body {
 
 /* ===== INPUT AREA ===== */
 .chat-input-area {
-  padding: 12px 24px 20px;
+  padding: 12px 24px calc(20px + env(safe-area-inset-bottom, 0px));
   background: var(--bg-chat);
   flex-shrink: 0;
 }
@@ -1505,41 +1544,99 @@ html, body {
   }
 }
 
-@media (max-width: 900px) {
-  .sidebar {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    z-index: 40;
-    box-shadow: var(--shadow);
-  }
-
-  .sidebar.collapsed {
-    width: 0;
-  }
-
-  .agent-panel {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    z-index: 40;
-    box-shadow: var(--shadow);
+@media (max-width: 768px) {
+  /* Show hamburger */
+  .hamburger-btn {
+    display: flex;
   }
 
   .header-left {
     min-width: auto;
   }
-}
 
-@media (max-width: 600px) {
+  /* Sidebar: hidden by default, slides in as overlay */
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: var(--header-height);
+    bottom: 0;
+    z-index: 40;
+    box-shadow: var(--shadow);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    width: min(var(--sidebar-width), 85vw);
+    min-width: min(var(--sidebar-width), 85vw);
+    opacity: 1;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .sidebar.collapsed {
+    transform: translateX(-100%);
+    width: min(var(--sidebar-width), 85vw);
+    min-width: min(var(--sidebar-width), 85vw);
+    opacity: 1;
+    border-right: 1px solid var(--border);
+  }
+
+  /* Agent panel: overlay on mobile */
+  .agent-panel {
+    position: fixed;
+    right: 0;
+    top: var(--header-height);
+    bottom: 0;
+    z-index: 40;
+    box-shadow: var(--shadow);
+    width: min(var(--agent-panel-width), 85vw);
+    min-width: min(var(--agent-panel-width), 85vw);
+  }
+
+  /* Touch-friendly tap targets (44px minimum) */
+  .attach-btn,
+  .send-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .header-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .sidebar-tab {
+    padding: 14px 8px;
+    min-height: 44px;
+  }
+
+  .hint-chip {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .conv-item {
+    min-height: 44px;
+  }
+
+  .new-chat-btn {
+    min-height: 44px;
+  }
+
+  .mode-btn {
+    min-height: 36px;
+    padding: 6px 14px;
+  }
+
+  /* Input area adjustments */
   .chat-messages {
     padding: 16px 12px 8px;
   }
 
   .chat-input-area {
-    padding: 8px 12px 12px;
+    padding: 8px 12px calc(12px + env(safe-area-inset-bottom, 0px));
   }
 
   .message {
@@ -1550,4 +1647,20 @@ html, body {
     flex-direction: column;
     align-items: stretch;
   }
+
+  /* Hide mode switch label on very small screens */
+  .header-center {
+    flex-shrink: 1;
+  }
+}
+
+/* Keyboard-open state applied via JS */
+.keyboard-open .chat-input-area {
+  padding-bottom: 8px;
+}
+
+.keyboard-open .chat-messages {
+  /* Ensure messages area shrinks so input stays visible */
+  flex: 1;
+  min-height: 0;
 }
