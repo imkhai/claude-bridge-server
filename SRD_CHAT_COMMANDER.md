@@ -24,7 +24,7 @@ The chat is accessible at `http://localhost:3210/chat` and serves as the primary
   - **Images** (PNG, JPG, GIF, WebP) — screenshots, bug reports, designs
   - **Documents** (MD, TXT, PDF) — SRDs, specs, requirements
   - **Code files** (JS, MJS, PY, etc.) — for review/analysis
-- Files saved to `workspace/uploads/{timestamp}-{filename}`
+- Files saved to `bridge-data/uploads/{timestamp}-{filename}`
 - Image preview thumbnail in chat
 - File icon + name for non-image files
 - Multiple file upload support
@@ -45,7 +45,7 @@ When user sends a message, the system analyzes intent and spawns appropriate age
 The routing is configurable — users can also explicitly specify: "use 3 parallel agents to..."
 
 ### 2.4 Conversation History
-- All conversations persisted to `workspace/conversations/`
+- All conversations persisted to `bridge-data/conversations/`
 - Each conversation is a JSON file with messages, agent responses, file references
 - Sidebar showing past conversations (title auto-generated from first message)
 - Click to reload any past conversation
@@ -69,7 +69,7 @@ The routing is configurable — users can also explicitly specify: "use 3 parall
 
 ### 2.7 Image/Screenshot Handling
 When user uploads an image:
-1. Save to `workspace/uploads/`
+1. Save to `bridge-data/uploads/`
 2. Spawn an `image-analyzer` agent with prompt: "Analyze this image: {path}. Describe what you see in detail."
 3. The analysis result becomes context for subsequent agents
 4. Image thumbnail shown in chat with analysis summary below
@@ -180,7 +180,7 @@ Request:
 {
   "conversationId": "conv-123" | null,
   "message": "Please implement a login page",
-  "files": ["workspace/uploads/1234-screenshot.png"]
+  "files": ["bridge-data/uploads/1234-screenshot.png"]
 }
 ```
 
@@ -207,7 +207,7 @@ Multipart form data with file(s). Returns:
   "files": [
     {
       "filename": "screenshot.png",
-      "path": "workspace/uploads/1712520000-screenshot.png",
+      "path": "bridge-data/uploads/1712520000-screenshot.png",
       "type": "image/png",
       "size": 245000
     }
@@ -248,7 +248,7 @@ function detectIntent(message, files) {
 ### 5.4 Conversation Storage
 
 ```
-workspace/conversations/
+bridge-data/conversations/
 ├── conv-abc123.json
 ├── conv-def456.json
 └── ...

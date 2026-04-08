@@ -1,5 +1,7 @@
 node_modules/
-workspace/
+bridge-data/
+bridge.db
+bridge.db-shm
+bridge.db-wal
 results/
 tasks/
-workspace/

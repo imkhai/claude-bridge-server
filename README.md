@@ -57,7 +57,7 @@ All via environment variables:
 | `API_KEY` | _(none)_ | API key for auth (disabled if unset) |
 | `MAX_PARALLEL` | `4` | Max concurrent claude processes |
 | `TIMEOUT_MS` | `600000` | Per-task timeout (10 min) |
-| `WORKSPACE` | `./workspace` | Root directory for files and SQLite DB |
+| `WORKSPACE` | `./bridge-data` | Root directory for files and SQLite DB |
 | `CLAUDE_PATH` | `claude` | Path to claude CLI binary |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `DEFAULT_ALLOWED_TOOLS` | _(none)_ | Default tools for all tasks (comma-separated or `all`) |
@@ -110,7 +110,7 @@ curl -X POST http://localhost:3210/ask/sync \
   "status": "done",
   "result": "Four\n",
   "error": null,
-  "resultFile": "/path/to/workspace/results/result-a1b2c3d4.md",
+  "resultFile": "/path/to/bridge-data/results/result-a1b2c3d4.md",
   "duration": 6897
 }
 ```
@@ -248,7 +248,7 @@ Conversational interface at `http://localhost:3210/chat`.
 
 ## Database
 
-SQLite database at `workspace/bridge.db` using `better-sqlite3` with WAL mode.
+SQLite database at `bridge-data/bridge.db` using `better-sqlite3` with WAL mode.
 
 **Tables:**
 - `conversations` — id, title, created_at, updated_at
@@ -257,7 +257,7 @@ SQLite database at `workspace/bridge.db` using `better-sqlite3` with WAL mode.
 - `uploaded_files` — id, filename, original_name, path, mimetype, size, conversation_id, created_at
 - `agent_stats` — agent_id (PK), total_tasks, success_count, error_count, timeout_count, total_duration, last_active_at
 
-On first startup, existing JSON conversation files in `workspace/conversations/` are automatically migrated to SQLite.
+On first startup, existing JSON conversation files in `bridge-data/conversations/` are automatically migrated to SQLite.
 
 ## Context Passing
 
@@ -272,7 +272,7 @@ curl -X POST http://localhost:3210/ask/sync \
 # 2. Context file (path to existing file within workspace)
 curl -X POST http://localhost:3210/ask/sync \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "Improve this", "contextFile": "workspace/results/result-abc123.md"}'
+  -d '{"prompt": "Improve this", "contextFile": "bridge-data/results/result-abc123.md"}'
 
 # 3. Chain auto-pass (previous step's result)
 # Set "usesPreviousResult": true in chain steps
@@ -391,7 +391,7 @@ claude-bridge-server/
 │   └── Claude_Bridge.postman_environment.json
 ├── tests/
 │   └── *.sh                    ← 8 test suites (119 assertions)
-└── workspace/                  ← Created at runtime
+└── bridge-data/                ← Created at runtime
     ├── bridge.db               ← SQLite database
     ├── tasks/                  ← Saved prompts
     ├── results/                ← Claude output files

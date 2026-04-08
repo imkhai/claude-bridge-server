@@ -21,7 +21,7 @@ HTTP Request → Express Route → Job Queue (FIFO, in-memory) → claude -p (sp
 
 - **Entry point:** `server.mjs` — Express app, route mounting, SQLite init, JSON conversation migration, graceful shutdown
 - **Config:** `src/config.mjs` — all via env vars (see Environment Variables below)
-- **Database:** `src/db.mjs` — SQLite via better-sqlite3 at `workspace/bridge.db`. Tables: `conversations`, `messages`, `jobs`, `uploaded_files`, `agent_stats`. WAL mode, prepared statement cache, auto-migration from legacy JSON conversations on startup
+- **Database:** `src/db.mjs` — SQLite via better-sqlite3 at `bridge-data/bridge.db`. Tables: `conversations`, `messages`, `jobs`, `uploaded_files`, `agent_stats`. WAL mode, prepared statement cache, auto-migration from legacy JSON conversations on startup
 - **Queue:** `src/queue.mjs` — in-memory Map for active jobs, FIFO scheduling, respects MAX_PARALLEL concurrency limit. Completed jobs are persisted to SQLite. Timeline events stored in a 100-entry ring buffer with SSE push to listeners
 - **Runner:** `src/claude-runner.mjs` — spawns `claude -p <prompt> --no-session-persistence`, handles timeout (SIGTERM→SIGKILL after 5s), 10MB buffer limit, real-time progress tracking (output bytes, stderr lines, last activity)
 - **Routes:** `src/routes/*.mjs` — one file per endpoint group
@@ -80,14 +80,14 @@ Completed jobs are persisted to the `jobs` table in SQLite. Agent performance st
 
 1. **ES Modules** — `"type": "module"` in package.json, all files use `.mjs` extension
 2. **SQLite persistence** — `better-sqlite3` with WAL mode. Stores conversations, messages, completed jobs, uploaded file metadata, and agent stats. Active jobs remain in-memory Maps for speed; completed jobs persist to DB
-3. **Auto-migration** — On startup, existing JSON conversation files in `workspace/conversations/` are migrated to SQLite (one-time, skipped if DB already has data)
+3. **Auto-migration** — On startup, existing JSON conversation files in `bridge-data/conversations/` are migrated to SQLite (one-time, skipped if DB already has data)
 4. **CLAUDECODE env var** — must be deleted from spawned process env to avoid "nested session" error from Claude CLI
 5. **Context passing** — 3 methods: inline `context` field (saved to temp file), `contextFile` path, or chain `usesPreviousResult` (auto-passes previous step's result file)
-6. **Result files** — saved to `workspace/results/result-{taskId}.md` with metadata header
+6. **Result files** — saved to `bridge-data/results/result-{taskId}.md` with metadata header
 7. **Chain execution** — sequential only, each step waits for previous. If a step fails, remaining steps are cancelled
 8. **Progress tracking** — `claude-runner.mjs` tracks output bytes, stderr lines, and last activity per process. Available via `/status/:taskId` and `/progress` endpoints
 9. **Chat intent detection** — keyword + file type analysis routes messages to agent patterns: bug-report, implementation, implementation-with-spec, review, bugfix, design, documentation, research, general
-10. **CHAT_WORKING_DIR** — Chat agents use `CHAT_WORKING_DIR` env var (falls back to `WORKSPACE`) so they can operate on project source outside the workspace directory
+10. **CHAT_WORKING_DIR** — Chat agents use `CHAT_WORKING_DIR` env var (falls back to `WORKSPACE`) so they can operate on project source outside the bridge-data directory
 
 ## Working with the Code
 
@@ -134,7 +134,7 @@ All tests are bash scripts using curl + python3 for JSON parsing. Total: 119 ass
 | `API_KEY` | _(none)_ | API key for auth (disabled if unset) |
 | `MAX_PARALLEL` | `4` | Max concurrent claude processes |
 | `TIMEOUT_MS` | `600000` | Per-task timeout (10 min) |
-| `WORKSPACE` | `./workspace` | Root directory for all files and SQLite DB |
+| `WORKSPACE` | `./bridge-data` | Root directory for all files and SQLite DB |
 | `CLAUDE_PATH` | `claude` | Path to claude CLI binary |
 | `LOG_LEVEL` | `info` | debug, info, warn, error |
 | `DEFAULT_ALLOWED_TOOLS` | _(none)_ | Default tools for all tasks (comma-separated or `all`) |
@@ -143,10 +143,10 @@ All tests are bash scripts using curl + python3 for JSON parsing. Total: 119 ass
 | `JOB_TTL_MS` | `3600000` | Job time-to-live in memory (1 hour) |
 | `CHAT_WORKING_DIR` | _(WORKSPACE)_ | Working directory for Chat Commander agents (allows operating outside workspace) |
 
-## Workspace Layout
+## Data Directory Layout
 
 ```
-workspace/
+bridge-data/
 ├── bridge.db        # SQLite database (conversations, messages, jobs, agent_stats, uploaded_files)
 ├── tasks/           # Saved prompts (task-{id}.md)
 ├── results/         # Claude output (result-{id}.md)

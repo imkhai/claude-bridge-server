@@ -6,7 +6,7 @@ export const config = {
   API_KEY: process.env.API_KEY || '',
   MAX_PARALLEL: parseInt(process.env.MAX_PARALLEL, 10) || 4,
   TIMEOUT_MS: parseInt(process.env.TIMEOUT_MS, 10) || 600000,
-  WORKSPACE: process.env.WORKSPACE || resolve('./workspace'),
+  WORKSPACE: process.env.WORKSPACE || resolve('./bridge-data'),
   CLAUDE_PATH: process.env.CLAUDE_PATH || 'claude',
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
   // Default allowed tools for Claude CLI. Set to comma-separated list or "all" for full access.
