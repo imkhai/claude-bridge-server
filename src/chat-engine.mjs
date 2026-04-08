@@ -251,8 +251,7 @@ export async function runChainAgents(conv, agents, userMessage, baseContext, tas
   for (const agentId of agents) {
     const prompt = buildAgentPrompt(agentId, userMessage, previousResult, conversationContext);
 
-    if (pushUpdate) pushUpdate('agent-status', { agentId, status: 'running' });
-
+    // Note: runSingleAgent already emits agent-status: running
     const result = await runSingleAgent(agentId, prompt, previousResult || null, conv.id, pushUpdate);
     taskIds.push(result.taskId);
 
