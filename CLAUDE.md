@@ -8,8 +8,9 @@ HTTP bridge server that lets AI agents submit tasks to Claude Code CLI via HTTP.
 
 ```bash
 npm install          # Install dependencies (express, better-sqlite3, multer)
-npm start            # Start server on port 3210
-npm run dev          # Start with --watch (live reload)
+./start.sh           # Start server (foreground)
+./start.sh --background  # Start server (background, logs to /tmp/bridge-server.log)
+./stop.sh            # Stop server
 curl localhost:3210/health  # Verify running
 ```
 
@@ -173,7 +174,7 @@ Accessible at `/chat`. A conversational interface that auto-routes requests to s
 When the user asks to implement, fix, review, or improve anything in this project:
 
 1. **ALWAYS use the bridge** — Submit tasks to `http://localhost:3210` via the API. NEVER implement directly yourself.
-2. **Check bridge is running first** — `curl -s http://localhost:3210/health`. If down, start it: `MAX_PARALLEL=8 WORKSPACE=/Users/khainguyen/ws_me/claude-bridge-server TIMEOUT_MS=900000 node server.mjs > /tmp/bridge-server.log 2>&1 &`
+2. **Check bridge is running first** — `curl -s http://localhost:3210/health`. If down, start it: `./start.sh --background`
 3. **Choose the right pattern:**
    - **Single task** → `POST /ask` (async) or `POST /ask/sync` (wait for result)
    - **Independent tasks** → Submit multiple `POST /ask` in parallel (up to 8 workers)

@@ -36,9 +36,9 @@ cd claude-bridge-server
 npm install
 
 # Start
-npm start
-# or with live reload:
-npm run dev
+./start.sh                # Foreground
+./start.sh --background   # Background (logs to /tmp/bridge-server.log)
+./stop.sh                 # Stop
 
 # Verify
 curl http://localhost:3210/health
@@ -67,14 +67,17 @@ All via environment variables:
 | `CHAT_WORKING_DIR` | _(WORKSPACE)_ | Working directory for Chat Commander agents |
 
 ```bash
-# Basic start with more workers
-MAX_PARALLEL=8 TIMEOUT_MS=300000 npm start
+# Default start (uses start.sh defaults: 8 workers, all tools, 0.0.0.0)
+./start.sh --background
 
-# Full tools mode — Claude can read/write files, run commands
-DEFAULT_ALLOWED_TOOLS="Edit,Write,Read,Bash,Glob,Grep" npm start
+# Override specific settings
+MAX_PARALLEL=2 TIMEOUT_MS=300000 ./start.sh
 
 # With auth
-API_KEY=my-secret-key npm start
+API_KEY=my-secret-key ./start.sh --background
+
+# Or run directly with env vars
+WORKSPACE=./bridge-data BIND_HOST=0.0.0.0 node server.mjs
 ```
 
 ## API Reference
@@ -358,6 +361,8 @@ npm start
 ```
 claude-bridge-server/
 ├── server.mjs                  ← Entry point (Express, SQLite init, shutdown)
+├── start.sh                    ← Start script (sets all env vars correctly)
+├── stop.sh                     ← Stop script
 ├── package.json                ← Dependencies: express, better-sqlite3, multer
 ├── src/
 │   ├── config.mjs              ← Environment config
