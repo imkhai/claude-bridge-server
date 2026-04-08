@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Defaults (override with env vars)
 echo $HOME
 export WORKSPACE="$HOME/prod-data/bridge-data"
-export BIND_HOST="${BIND_HOST:-127.0.0.1}"
+export BIND_HOST="${BIND_HOST:-0.0.0.0}"
 export BRIDGE_PORT="${BRIDGE_PORT:-3210}"
 export MAX_PARALLEL="${MAX_PARALLEL:-8}"
 export TIMEOUT_MS="${TIMEOUT_MS:-900000}"
