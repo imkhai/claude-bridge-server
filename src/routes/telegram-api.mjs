@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { Router } from 'express';
 import { config } from '../config.mjs';
 import { logger } from '../utils/logger.mjs';
+import { validatePathWithinWorkspace } from '../utils/validators.mjs';
 import { getTelegram, sendMessage, sendFile } from '../telegram.mjs';
 
 export const telegramRouter = Router();
@@ -82,7 +83,14 @@ telegramRouter.post('/api/telegram/send-file', async (req, res, next) => {
       return res.status(400).json({ error: 'chatId and filePath are required' });
     }
 
-    const result = await sendFile(String(chatId), filePath, caption);
+    let validatedPath;
+    try {
+      validatedPath = validatePathWithinWorkspace(filePath, 'filePath');
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    const result = await sendFile(String(chatId), validatedPath, caption);
     if (!result) {
       return res.status(500).json({ error: 'Failed to send file' });
     }
