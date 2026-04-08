@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { config } from './src/config.mjs';
@@ -49,6 +50,15 @@ app.get('/', (req, res, next) => {
   }
   next();
 });
+
+// Rate limiting on task-submission and chat endpoints
+const taskLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false });
+const chatSendLimiter = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
+const chatUploadLimiter = rateLimit({ windowMs: 60_000, max: 20, standardHeaders: true, legacyHeaders: false });
+app.use('/ask', taskLimiter);
+app.use('/chain', taskLimiter);
+app.use('/api/chat/send', chatSendLimiter);
+app.use('/api/chat/upload', chatUploadLimiter);
 
 app.use(askRouter);
 app.use(statusRouter);

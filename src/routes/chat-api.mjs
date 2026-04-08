@@ -7,6 +7,7 @@ import { config } from '../config.mjs';
 import { queue, onTimelineEvent } from '../queue.mjs';
 import { logger } from '../utils/logger.mjs';
 import * as db from '../db.mjs';
+import { validateAllowedTools } from '../utils/validators.mjs';
 
 export const chatRouter = Router();
 
@@ -20,7 +21,7 @@ const ALLOWED_EXTENSIONS = new Set([
   '.py', '.go', '.rs', '.java', '.c', '.cpp', '.h', // code
   '.json', '.yaml', '.yml', '.toml', '.csv',        // data
   '.sh', '.bash', '.zsh',                           // scripts
-  '.css', '.html', '.svg',                          // web
+  '.css', '.html',                                   // web
 ]);
 
 const storage = multer.diskStorage({
@@ -89,7 +90,7 @@ function detectIntent(message, files = []) {
   if (hasImages && /bug|issue|fix|broken|error|wrong|crash/i.test(lower)) {
     return {
       pattern: 'bug-report',
-      agents: ['image-analyzer', 'investigator', 'senior-engineer', 'qa-reviewer'],
+      agents: ['image-analyzer', 'investigator', 'senior-engineer', 'qa-reviewer', 'code-reviewer'],
       method: 'chain',
     };
   }
@@ -98,7 +99,7 @@ function detectIntent(message, files = []) {
   if (hasDocs && /implement|build|create/i.test(lower)) {
     return {
       pattern: 'implementation-with-spec',
-      agents: ['architect', 'backend-engineer', 'frontend-engineer', 'qa-reviewer'],
+      agents: ['architect', 'backend-engineer', 'frontend-engineer', 'qa-reviewer', 'code-reviewer'],
       method: 'chain',
     };
   }
@@ -107,7 +108,7 @@ function detectIntent(message, files = []) {
   if (/implement|build|create|add feature/i.test(lower)) {
     return {
       pattern: 'implementation',
-      agents: ['architect', 'frontend-engineer', 'integration-engineer'],
+      agents: ['architect', 'frontend-engineer', 'integration-engineer', 'code-reviewer'],
       method: 'chain',
     };
   }
@@ -125,7 +126,7 @@ function detectIntent(message, files = []) {
   if (/fix|bug|broken|error|crash|issue/i.test(lower)) {
     return {
       pattern: 'bugfix',
-      agents: ['investigator', 'senior-engineer', 'qa-reviewer'],
+      agents: ['investigator', 'senior-engineer', 'qa-reviewer', 'code-reviewer'],
       method: 'chain',
     };
   }
@@ -189,7 +190,19 @@ function pushSSE(conversationId, event, data) {
 // CHAT_WORKING_DIR allows chat agents to work outside workspace (e.g., on project source)
 // Falls back to WORKSPACE if not set
 const WORKING_DIR = process.env.CHAT_WORKING_DIR || config.WORKSPACE;
-const DEFAULT_TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'];
+const CHAT_REQUESTED_TOOLS = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'];
+
+// Gate chat tools through the same server policy as API requests.
+// If DEFAULT_ALLOWED_TOOLS is unset, Bash will be stripped by the validator.
+let DEFAULT_TOOLS;
+try {
+  DEFAULT_TOOLS = validateAllowedTools(CHAT_REQUESTED_TOOLS) || CHAT_REQUESTED_TOOLS;
+} catch {
+  // Some tools were denied by server policy — use only the permitted ones
+  DEFAULT_TOOLS = CHAT_REQUESTED_TOOLS.filter(t => {
+    try { validateAllowedTools([t]); return true; } catch { return false; }
+  });
+}
 
 async function spawnAgents(conv, routing, userMessage, files) {
   try {
@@ -408,10 +421,10 @@ async function runSingleAgentFlow(conv, agentId, userMessage, baseContext, taskI
 function buildAgentPrompt(agentId, userMessage, previousContext) {
   const rolePrompts = {
     'architect': `You are a senior software architect. Analyze this request and create a detailed implementation plan with file structure, key decisions, and step-by-step approach.`,
-    'frontend-engineer': `You are a senior frontend engineer. Implement the frontend code based on the plan or request. Write clean, production-ready code.`,
-    'backend-engineer': `You are a senior backend engineer. Implement the server-side code based on the plan or request. Write clean, production-ready code.`,
-    'integration-engineer': `You are an integration engineer. Review the implementation, ensure all parts work together, run tests if applicable, and fix any issues.`,
-    'senior-engineer': `You are a senior software engineer. Implement the fix or feature with production-quality code. Consider edge cases and error handling.`,
+    'frontend-engineer': `You are a senior frontend engineer. Implement the frontend code based on the plan or request. Write clean, production-ready code. After making code changes, create a feature branch (e.g. feat/description or fix/description), stage and commit your changes with a clear commit message. NEVER add Co-Authored-By or any AI signature lines to commits. Push the branch and create a PR with gh pr create --title <title> --body <description>. Do NOT merge the PR yourself - the code-reviewer will handle that.`,
+    'backend-engineer': `You are a senior backend engineer. Implement the server-side code based on the plan or request. Write clean, production-ready code. After making code changes, create a feature branch (e.g. feat/description or fix/description), stage and commit your changes with a clear commit message. NEVER add Co-Authored-By or any AI signature lines to commits. Push the branch and create a PR with gh pr create --title <title> --body <description>. Do NOT merge the PR yourself - the code-reviewer will handle that.`,
+    'integration-engineer': `You are an integration engineer. Review the implementation, ensure all parts work together, run tests if applicable, and fix any issues. After making code changes, create a feature branch (e.g. feat/description or fix/description), stage and commit your changes with a clear commit message. NEVER add Co-Authored-By or any AI signature lines to commits. Push the branch and create a PR with gh pr create --title <title> --body <description>. Do NOT merge the PR yourself - the code-reviewer will handle that.`,
+    'senior-engineer': `You are a senior software engineer. Implement the fix or feature with production-quality code. Consider edge cases and error handling. After making code changes, create a feature branch (e.g. feat/description or fix/description), stage and commit your changes with a clear commit message. NEVER add Co-Authored-By or any AI signature lines to commits. Push the branch and create a PR with gh pr create --title <title> --body <description>. Do NOT merge the PR yourself - the code-reviewer will handle that.`,
     'investigator': `You are a bug investigator. Analyze the issue, search the codebase for root causes, and document your findings with specific file paths and line numbers.`,
     'qa-reviewer': `You are a QA reviewer. Review the changes made, verify correctness, check for edge cases, and confirm the implementation meets requirements.`,
     'security-auditor': `You are a security auditor. Perform a thorough security review of the code. Look for vulnerabilities (OWASP Top 10), injection risks, auth issues, and data exposure.`,
@@ -420,6 +433,7 @@ function buildAgentPrompt(agentId, userMessage, previousContext) {
     'researcher': `You are a research engineer. Analyze the codebase thoroughly to answer the question. Provide clear, detailed explanations with references to specific code.`,
     'documentation-agent': `You are a documentation specialist. Write clear, comprehensive documentation.`,
     'general-agent': `You are a helpful software engineering assistant. Handle this request thoroughly.`,
+    'code-reviewer': `You are a senior code reviewer. Review the pull request created by the engineering team. Use gh pr list to find recent PRs, gh pr diff <number> to review the code changes, and gh pr view <number> for details. If the code looks good, approve with gh pr review <number> --approve and merge with gh pr merge <number> --merge --delete-branch. If you find issues, request changes with gh pr review <number> --request-changes --body <your feedback>.`,
     'image-analyzer': `You are an image analysis specialist. Describe the image contents in detail.`,
   };
 

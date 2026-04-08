@@ -37,8 +37,13 @@ export function markdownToHtml(text) {
   // Horizontal rule
   html = html.replace(/^---$/gm, '<hr>');
 
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // Links — only allow http(s), relative, and anchor URLs (blocks javascript: etc.)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
+    if (!/^https?:\/\//i.test(url) && !url.startsWith('/') && !url.startsWith('#')) {
+      return text;
+    }
+    return `<a href="${url}" target="_blank" rel="noopener">${text}</a>`;
+  });
 
   // Unordered lists
   html = html.replace(/^(\s*)[-*] (.+)$/gm, '$1<li>$2</li>');
@@ -78,7 +83,9 @@ function escapeHtml(text) {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /**

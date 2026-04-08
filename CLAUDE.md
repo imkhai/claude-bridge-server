@@ -194,13 +194,27 @@ Chain: security-auditor → tech-lead → senior-engineer → qa-reviewer
 
 **Feature Implementation:**
 ```
-Parallel: architect + designer (plan) → Parallel: backend-engineer + frontend-engineer (build) → integration-engineer (test)
+Chain: architect → frontend-engineer → integration-engineer → code-reviewer
+```
+
+**Implementation with Spec:**
+```
+Chain: architect → backend-engineer → frontend-engineer → qa-reviewer → code-reviewer
 ```
 
 **Bug Fix:**
 ```
-Chain: investigator → senior-engineer → qa-reviewer
+Chain: investigator → senior-engineer → qa-reviewer → code-reviewer
 ```
+
+**Bug Report (with screenshot):**
+```
+Chain: image-analyzer → investigator → senior-engineer → qa-reviewer → code-reviewer
+```
+
+### PR-Based Code Review Workflow
+
+Engineers automatically create feature branches, commit changes, push, and create PRs via `gh pr create`. The `code-reviewer` agent reviews the PR diff and either approves+merges or requests changes. **NEVER** add `Co-Authored-By` or any AI signature to commit messages.
 
 **Visual/Animation Work:**
 ```

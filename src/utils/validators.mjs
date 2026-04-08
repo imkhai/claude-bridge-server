@@ -36,7 +36,14 @@ export function validateContextFile(contextFile) {
 }
 
 /**
+ * Safe default tools when DEFAULT_ALLOWED_TOOLS is not configured.
+ * Notably excludes Bash to prevent arbitrary command execution.
+ */
+const SAFE_DEFAULT_TOOLS = new Set(['Read', 'Glob', 'Grep', 'Write', 'Edit']);
+
+/**
  * Validates allowedTools against the server's DEFAULT_ALLOWED_TOOLS whitelist.
+ * When DEFAULT_ALLOWED_TOOLS is unset, defaults to SAFE_DEFAULT_TOOLS (no Bash).
  */
 export function validateAllowedTools(requestedTools) {
   if (!requestedTools) return null;
@@ -50,14 +57,16 @@ export function validateAllowedTools(requestedTools) {
     }
   }
 
-  if (config.DEFAULT_ALLOWED_TOOLS) {
-    const serverAllowed = new Set(
-      config.DEFAULT_ALLOWED_TOOLS.split(',').map(t => t.trim()).filter(Boolean)
-    );
-    const denied = requestedTools.filter(t => !serverAllowed.has(t));
-    if (denied.length > 0) {
-      throw new Error(`Tools not permitted by server policy: ${denied.join(', ')}`);
-    }
+  const serverAllowed = config.DEFAULT_ALLOWED_TOOLS
+    ? new Set(config.DEFAULT_ALLOWED_TOOLS.split(',').map(t => t.trim()).filter(Boolean))
+    : SAFE_DEFAULT_TOOLS;
+
+  // "all" means no restriction
+  if (serverAllowed.has('all')) return requestedTools;
+
+  const denied = requestedTools.filter(t => !serverAllowed.has(t));
+  if (denied.length > 0) {
+    throw new Error(`Tools not permitted by server policy: ${denied.join(', ')}`);
   }
 
   return requestedTools;

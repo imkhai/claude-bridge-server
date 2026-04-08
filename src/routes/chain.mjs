@@ -24,6 +24,10 @@ chainRouter.post('/chain', (req, res) => {
     return res.status(400).json({ error: 'steps is required and must be a non-empty array' });
   }
 
+  if (steps.length > 10) {
+    return res.status(400).json({ error: 'Chain cannot exceed 10 steps' });
+  }
+
   // Validate each step
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i];
