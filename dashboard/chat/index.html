@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/chat.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg viewBox='0 0 32 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M6 16 Q16 2 26 16' stroke='%23D97757' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3Cline x1='6' y1='16' x2='26' y2='16' stroke='%23D97757' stroke-width='1' opacity='0.4'/%3E%3Ccircle cx='5' cy='12' r='1.8' fill='%23E8DDD3'/%3E%3Ccircle cx='5' cy='16' r='1.8' fill='%23E8DDD3'/%3E%3Ccircle cx='5' cy='20' r='1.8' fill='%23E8DDD3'/%3E%3Ccircle cx='27' cy='16' r='2.8' fill='%23D97757'/%3E%3C/svg%3E">
 </head>
 <body>
   <!-- Header -->
@@ -17,7 +18,14 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
       <div class="header-logo">
-        <span class="logo-dot"></span>
+        <svg class="logo-svg" viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 16 Q16 2 26 16" stroke="#D97757" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <line x1="6" y1="16" x2="26" y2="16" stroke="#D97757" stroke-width="1" opacity="0.4"/>
+          <circle cx="5" cy="12" r="1.8" fill="#E8DDD3"/>
+          <circle cx="5" cy="16" r="1.8" fill="#E8DDD3"/>
+          <circle cx="5" cy="20" r="1.8" fill="#E8DDD3"/>
+          <circle cx="27" cy="16" r="2.8" fill="#D97757"/>
+        </svg>
         <span class="header-title">Chat Commander</span>
       </div>
     </div>
@@ -31,9 +39,6 @@
       <a href="/dashboard/" class="header-btn" title="Dashboard">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       </a>
-      <button class="header-btn" id="toggleAgentPanel" title="Toggle agent panel">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      </button>
       <button class="header-btn" id="settingsBtn" title="Settings">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
       </button>
@@ -145,22 +150,6 @@
       </div>
     </main>
 
-    <!-- Right Agent Panel -->
-    <aside class="agent-panel" id="agentPanel">
-      <div class="agent-panel-header">
-        <h3 class="agent-panel-title">Agent Activity</h3>
-        <button class="agent-panel-close" id="closeAgentPanel">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="agent-panel-content" id="agentPanelContent">
-        <div class="agent-idle">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-          <p>No active agents</p>
-          <span>Send a message to start working</span>
-        </div>
-      </div>
-    </aside>
   </div>
 
   <script type="module" src="js/chat-app.mjs"></script>

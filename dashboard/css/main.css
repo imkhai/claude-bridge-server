@@ -55,6 +55,13 @@ header {
   gap: 12px;
 }
 
+.logo-svg {
+  width: 24px;
+  height: 18px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 4px rgba(217, 119, 87, 0.4));
+}
+
 .header-title {
   font-weight: 700;
   font-size: 14px;
