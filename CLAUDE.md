@@ -26,8 +26,10 @@ HTTP Request → Express Route → Job Queue (FIFO, in-memory) → claude -p (sp
 - **Summarizer:** `src/summarizer.mjs` — generates compact conversation summaries after agents complete. Spawns a `summarizer` agent (pure text, no tools) to compress conversation history into structured Markdown. Summaries are stored in both SQLite and files (`bridge-data/summaries/`). Loaded and injected as context when users send follow-up messages in existing conversations
 - **Queue:** `src/queue.mjs` — in-memory Map for active jobs, FIFO scheduling, respects MAX_PARALLEL concurrency limit. Completed jobs are persisted to SQLite. Timeline events stored in a 100-entry ring buffer with SSE push to listeners
 - **Runner:** `src/claude-runner.mjs` — spawns `claude -p <prompt> --no-session-persistence`, handles timeout (SIGTERM→SIGKILL after 5s), 10MB buffer limit, real-time progress tracking (output bytes, stderr lines, last activity)
+- **Chat Engine:** `src/chat-engine.mjs` — agent orchestration logic extracted from chat-api (intent detection, agent prompt building, spawn/chain/parallel execution with pushUpdate callback)
+- **Telegram:** `src/telegram.mjs` — Telegram bot integration for inbound/outbound messaging. `src/notifications.mjs` — event notifications to Telegram. `src/routes/telegram-api.mjs` — webhook endpoint
 - **Routes:** `src/routes/*.mjs` — one file per endpoint group
-- **Middleware:** `src/middleware/auth.mjs` (API key with timing-safe comparison, skips health/dashboard), `src/middleware/request-logger.mjs` (request duration logging)
+- **Middleware:** `src/middleware/auth.mjs` (API key with timing-safe comparison, skips health/dashboard/telegram webhook), `src/middleware/request-logger.mjs` (request duration logging)
 - **Utils:** `src/utils/logger.mjs` (structured console logging with levels), `src/utils/file-manager.mjs` (workspace directory creation, task/context/result file ops), `src/utils/validators.mjs` (input validation, path traversal prevention, tool whitelist enforcement)
 
 ## API Endpoints
@@ -125,9 +127,10 @@ Server must be running first (`npm start` in one terminal).
 ./tests/test-refactoring.sh        # 3-step refactoring pipeline
 ./tests/test-security-review.sh    # 3-step security pipeline
 ./tests/test-parallel-bulk.sh      # Bulk submit, concurrency, cancel
+./tests/test-chat-ui.sh            # Chat UI: page load, JS modules, agent panel guards, API
 ```
 
-All tests are bash scripts using curl + python3 for JSON parsing. Total: 119 assertions across 8 suites.
+All tests are bash scripts using curl + python3 for JSON parsing. Total: 139 assertions across 9 suites.
 
 ## Environment Variables
 
@@ -149,6 +152,11 @@ All tests are bash scripts using curl + python3 for JSON parsing. Total: 119 ass
 | `SUMMARY_ENABLED` | `true` | Enable/disable conversation memory summarization |
 | `SUMMARY_MAX_CHARS` | `6000` | Max summary size in characters |
 | `SUMMARY_MAX_TURN_CHARS` | `3000` | Max per-agent output fed to summarizer |
+| `TELEGRAM_BOT_TOKEN` | _(none)_ | Telegram bot token (disabled if unset) |
+| `TELEGRAM_CHAT_ID` | _(none)_ | Default Telegram chat ID for notifications |
+| `TELEGRAM_WEBHOOK_URL` | _(none)_ | Webhook URL for receiving Telegram messages |
+| `TELEGRAM_WEBHOOK_SECRET` | _(none)_ | Secret for validating webhook requests |
+| `TELEGRAM_NOTIFY_EVENTS` | `task_done,task_error,task_timeout` | Comma-separated event types to notify |
 
 ## Data Directory Layout
 
@@ -171,7 +179,7 @@ Accessible at `/chat`. A conversational interface that auto-routes requests to s
 - **Intent detection** — analyzes message keywords and attached files to select an agent pattern (bug-report, implementation-with-spec, implementation, review, bugfix, design, documentation, research, general)
 - **Agent routing** — spawns single agents, sequential chains, or parallel teams based on intent
 - **File upload** — supports images, docs, code files (50MB max per file, 10 files max, filtered by extension whitelist)
-- **Conversation history** — persisted in SQLite (conversations + messages tables)
+- **Conversation history** — persisted in SQLite (conversations + messages tables). Active conversation is preserved across page reloads via URL param (`?conv=`) and sessionStorage fallback
 - **Real-time updates** — SSE stream per conversation for live agent status and messages
 - **Image analysis** — if images are attached with a bug report, an image-analyzer agent runs first
 - **Agent roles** — built-in role prompts for: architect, frontend-engineer, backend-engineer, integration-engineer, senior-engineer, investigator, qa-reviewer, security-auditor, tech-lead, ui-architect, researcher, documentation-agent, general-agent, image-analyzer, summarizer
