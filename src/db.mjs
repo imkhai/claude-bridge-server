@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import Database from 'better-sqlite3';
 import { join } from 'path';
 import { readFileSync } from 'fs';
@@ -86,6 +87,19 @@ function createTables() {
       total_duration INTEGER DEFAULT 0,
       last_active_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS conversation_summaries (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL UNIQUE,
+      turn_number INTEGER NOT NULL DEFAULT 1,
+      summary_text TEXT NOT NULL,
+      metadata TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_summaries_conversation ON conversation_summaries(conversation_id);
   `);
 }
 
@@ -179,9 +193,55 @@ export function deleteConversation(id) {
 
   if (!conv) return false;
 
+  stmt('delSummary', `DELETE FROM conversation_summaries WHERE conversation_id = ?`).run(id);
   stmt('delMsgs', `DELETE FROM messages WHERE conversation_id = ?`).run(id);
   stmt('delConv', `DELETE FROM conversations WHERE id = ?`).run(id);
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Conversation Summaries
+// ---------------------------------------------------------------------------
+
+export function upsertSummary({ conversationId, turnNumber, summaryText, metadata }) {
+  const now = new Date().toISOString();
+  const id = `summary-${crypto.randomUUID().slice(0, 12)}`;
+
+  stmt('upsertSummary',
+    `INSERT INTO conversation_summaries (id, conversation_id, turn_number, summary_text, metadata, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(conversation_id) DO UPDATE SET
+       turn_number = excluded.turn_number,
+       summary_text = excluded.summary_text,
+       metadata = excluded.metadata,
+       updated_at = excluded.updated_at`
+  ).run(
+    id,
+    conversationId,
+    turnNumber,
+    summaryText,
+    metadata ? JSON.stringify(metadata) : null,
+    now,
+    now,
+  );
+}
+
+export function getSummary(conversationId) {
+  const row = stmt('getSummary',
+    `SELECT summary_text AS summaryText, turn_number AS turnNumber, metadata, updated_at AS updatedAt
+     FROM conversation_summaries WHERE conversation_id = ?`
+  ).get(conversationId);
+
+  if (!row) return null;
+
+  return {
+    ...row,
+    metadata: row.metadata ? JSON.parse(row.metadata) : null,
+  };
+}
+
+export function deleteSummary(conversationId) {
+  stmt('delSummaryById', `DELETE FROM conversation_summaries WHERE conversation_id = ?`).run(conversationId);
 }
 
 // ---------------------------------------------------------------------------

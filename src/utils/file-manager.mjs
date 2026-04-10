@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { config } from '../config.mjs';
 
-const DIRS = ['tasks', 'results', 'contexts', 'shared', 'uploads', 'conversations'];
+const DIRS = ['tasks', 'results', 'contexts', 'shared', 'uploads', 'conversations', 'summaries'];
 
 export async function ensureDirectories() {
   for (const dir of DIRS) {

@@ -17,4 +17,8 @@ export const config = {
   // Queue limits
   MAX_QUEUE_SIZE: parseInt(process.env.MAX_QUEUE_SIZE, 10) || 1000,
   JOB_TTL_MS: parseInt(process.env.JOB_TTL_MS, 10) || 3600000, // 1 hour
+  // Conversation memory
+  SUMMARY_ENABLED: process.env.SUMMARY_ENABLED !== 'false',
+  SUMMARY_MAX_CHARS: parseInt(process.env.SUMMARY_MAX_CHARS, 10) || 6000,
+  SUMMARY_MAX_TURN_CHARS: parseInt(process.env.SUMMARY_MAX_TURN_CHARS, 10) || 3000,
 };

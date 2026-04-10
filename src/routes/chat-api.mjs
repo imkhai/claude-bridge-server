@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { Router } from 'express';
-import { readdir, stat } from 'fs/promises';
+import { readdir, stat, unlink } from 'fs/promises';
 import { join, extname } from 'path';
 import multer from 'multer';
 import { config } from '../config.mjs';
@@ -8,6 +8,7 @@ import { queue, onTimelineEvent } from '../queue.mjs';
 import { logger } from '../utils/logger.mjs';
 import * as db from '../db.mjs';
 import { validateAllowedTools } from '../utils/validators.mjs';
+import { generateSummary, loadSummary } from '../summarizer.mjs';
 
 export const chatRouter = Router();
 
@@ -218,7 +219,7 @@ function getToolsForAgent(agentId) {
   return DEFAULT_TOOLS;
 }
 
-async function spawnAgents(conv, routing, userMessage, files) {
+async function spawnAgents(conv, routing, userMessage, files, conversationContext = null) {
   try {
     const { pattern, agents, method } = routing;
     const taskIds = [];
@@ -270,12 +271,27 @@ async function spawnAgents(conv, routing, userMessage, files) {
     const remainingAgents = agents.filter(a => a !== 'image-analyzer');
 
     if (method === 'chain') {
-      await runChainAgents(conv, remainingAgents, userMessage, baseContext, taskIds);
+      await runChainAgents(conv, remainingAgents, userMessage, baseContext, taskIds, conversationContext);
     } else if (method === 'parallel') {
-      await runParallelAgents(conv, remainingAgents, userMessage, baseContext, taskIds);
+      await runParallelAgents(conv, remainingAgents, userMessage, baseContext, taskIds, conversationContext);
     } else {
       // single
-      await runSingleAgentFlow(conv, remainingAgents[0], userMessage, baseContext, taskIds);
+      await runSingleAgentFlow(conv, remainingAgents[0], userMessage, baseContext, taskIds, conversationContext);
+    }
+
+    // Generate summary after all agents complete (fire-and-forget)
+    if (config.SUMMARY_ENABLED) {
+      const turnNumber = conv.messages.filter(m => m.role === 'user').length;
+      const turnMessages = getTurnMessages(conv, turnNumber);
+      pushSSE(conv.id, 'summary-generating', { conversationId: conv.id });
+      generateSummary(conv.id, turnMessages, turnNumber).then(summary => {
+        if (summary) {
+          pushSSE(conv.id, 'summary-ready', { conversationId: conv.id, turnNumber, tokensEstimate: Math.ceil(summary.length / 4) });
+        }
+      }).catch(err => {
+        logger.error(`Summary generation failed: ${err.message}`, { conversationId: conv.id });
+        pushSSE(conv.id, 'summary-error', { conversationId: conv.id, error: err.message });
+      });
     }
 
     // Final completion event
@@ -338,11 +354,11 @@ async function runSingleAgent(agentId, prompt, contextContent, conversationId) {
   };
 }
 
-async function runChainAgents(conv, agents, userMessage, baseContext, taskIds) {
+async function runChainAgents(conv, agents, userMessage, baseContext, taskIds, conversationContext = null) {
   let previousResult = baseContext;
 
   for (const agentId of agents) {
-    const prompt = buildAgentPrompt(agentId, userMessage, previousResult);
+    const prompt = buildAgentPrompt(agentId, userMessage, previousResult, conversationContext);
 
     pushSSE(conv.id, 'agent-status', { agentId, status: 'running' });
 
@@ -378,9 +394,9 @@ async function runChainAgents(conv, agents, userMessage, baseContext, taskIds) {
   }
 }
 
-async function runParallelAgents(conv, agents, userMessage, baseContext, taskIds) {
+async function runParallelAgents(conv, agents, userMessage, baseContext, taskIds, conversationContext = null) {
   const promises = agents.map(agentId => {
-    const prompt = buildAgentPrompt(agentId, userMessage, baseContext);
+    const prompt = buildAgentPrompt(agentId, userMessage, baseContext, conversationContext);
     return runSingleAgent(agentId, prompt, baseContext || null, conv.id)
       .then(result => ({ agentId, ...result }));
   });
@@ -411,8 +427,8 @@ async function runParallelAgents(conv, agents, userMessage, baseContext, taskIds
   persistConversation(conv);
 }
 
-async function runSingleAgentFlow(conv, agentId, userMessage, baseContext, taskIds) {
-  const prompt = buildAgentPrompt(agentId, userMessage, baseContext);
+async function runSingleAgentFlow(conv, agentId, userMessage, baseContext, taskIds, conversationContext = null) {
+  const prompt = buildAgentPrompt(agentId, userMessage, baseContext, conversationContext);
   const result = await runSingleAgent(agentId, prompt, baseContext || null, conv.id);
   taskIds.push(result.taskId);
 
@@ -432,7 +448,22 @@ async function runSingleAgentFlow(conv, agentId, userMessage, baseContext, taskI
   pushSSE(conv.id, 'agent-message', agentMsg);
 }
 
-function buildAgentPrompt(agentId, userMessage, previousContext) {
+function getTurnMessages(conv, turnNumber) {
+  let userMsgCount = 0;
+  let startIdx = 0;
+  for (let i = 0; i < conv.messages.length; i++) {
+    if (conv.messages[i].role === 'user') {
+      userMsgCount++;
+      if (userMsgCount === turnNumber) {
+        startIdx = i;
+        break;
+      }
+    }
+  }
+  return conv.messages.slice(startIdx);
+}
+
+function buildAgentPrompt(agentId, userMessage, previousContext, conversationSummary = null) {
   const rolePrompts = {
     'architect': `You are a senior software architect. Analyze this request and create a detailed implementation plan with file structure, key decisions, and step-by-step approach.`,
     'frontend-engineer': `You are a senior frontend engineer. Implement the frontend code based on the plan or request. Write clean, production-ready code. After making code changes, create a feature branch (e.g. feat/description or fix/description), stage and commit your changes with a clear commit message. NEVER add Co-Authored-By or any AI signature lines to commits. Push the branch and create a PR with gh pr create --title <title> --body <description>. Do NOT merge the PR yourself - the code-reviewer will handle that.`,
@@ -452,7 +483,13 @@ function buildAgentPrompt(agentId, userMessage, previousContext) {
   };
 
   const role = rolePrompts[agentId] || rolePrompts['general-agent'];
-  let prompt = `${role}\n\n## User Request\n${userMessage}`;
+  let prompt = `${role}\n\n`;
+
+  if (conversationSummary) {
+    prompt += `## Conversation History\nThis is a follow-up message in an ongoing conversation. Here is what happened previously:\n\n${conversationSummary}\n\n---\n\n`;
+  }
+
+  prompt += `## User Request\n${userMessage}`;
 
   if (previousContext) {
     prompt += `\n\n## Previous Context\n${previousContext}`;
@@ -527,10 +564,16 @@ chatRouter.post('/api/chat/send', async (req, res, next) => {
       routing,
     });
 
+    // Load conversation memory for existing conversations
+    let conversationContext = null;
+    if (conversationId) {
+      conversationContext = await loadSummary(conv.id);
+    }
+
     // Spawn agents in background (don't await — results come via SSE)
     pushSSE(conv.id, 'routing', { routing, conversationId: conv.id });
 
-    spawnAgents(conv, routing, trimmedMessage, files).catch(err => {
+    spawnAgents(conv, routing, trimmedMessage, files, conversationContext).catch(err => {
       logger.error(`Agent orchestration failed: ${err.message}`, { conversationId: conv.id });
       pushSSE(conv.id, 'error', { error: err.message });
     });
@@ -583,6 +626,16 @@ chatRouter.get('/api/chat/conversations/:id', (req, res, next) => {
     if (!conv) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
+
+    const summaryRow = db.getSummary(req.params.id);
+    if (summaryRow) {
+      conv.summary = {
+        turnNumber: summaryRow.turnNumber,
+        text: summaryRow.summaryText,
+        updatedAt: summaryRow.updatedAt,
+      };
+    }
+
     res.json(conv);
   } catch (err) {
     next(err);
@@ -590,14 +643,75 @@ chatRouter.get('/api/chat/conversations/:id', (req, res, next) => {
 });
 
 // DELETE /api/chat/conversations/:id — Delete conversation
-chatRouter.delete('/api/chat/conversations/:id', (req, res, next) => {
+chatRouter.delete('/api/chat/conversations/:id', async (req, res, next) => {
   try {
     const id = req.params.id;
     const deleted = db.deleteConversation(id);
     if (!deleted) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
+
+    // Remove summary file
+    try {
+      await unlink(join(config.WORKSPACE, 'summaries', `summary-${id}.md`));
+    } catch { /* file may not exist */ }
+
     res.json({ deleted: true, id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/chat/conversations/:id/summary — Get conversation summary
+chatRouter.get('/api/chat/conversations/:id/summary', (req, res, next) => {
+  try {
+    const summaryRow = db.getSummary(req.params.id);
+    if (!summaryRow) {
+      return res.status(404).json({ error: 'No summary found for this conversation' });
+    }
+
+    res.json({
+      conversationId: req.params.id,
+      turnNumber: summaryRow.turnNumber,
+      summary: summaryRow.summaryText,
+      metadata: summaryRow.metadata,
+      updatedAt: summaryRow.updatedAt,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/chat/conversations/:id/summary/regenerate — Force-regenerate summary
+chatRouter.post('/api/chat/conversations/:id/summary/regenerate', async (req, res, next) => {
+  try {
+    const conv = loadConversation(req.params.id);
+    if (!conv) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    const turnNumber = conv.messages.filter(m => m.role === 'user').length;
+    if (turnNumber === 0) {
+      return res.status(400).json({ error: 'No user messages in conversation' });
+    }
+
+    res.json({
+      conversationId: conv.id,
+      status: 'queued',
+      message: 'Summary regeneration queued',
+    });
+
+    // Regenerate in background
+    const turnMessages = getTurnMessages(conv, turnNumber);
+    pushSSE(conv.id, 'summary-generating', { conversationId: conv.id });
+    generateSummary(conv.id, turnMessages, turnNumber).then(summary => {
+      if (summary) {
+        pushSSE(conv.id, 'summary-ready', { conversationId: conv.id, turnNumber, tokensEstimate: Math.ceil(summary.length / 4) });
+      }
+    }).catch(err => {
+      logger.error(`Summary regeneration failed: ${err.message}`, { conversationId: conv.id });
+      pushSSE(conv.id, 'summary-error', { conversationId: conv.id, error: err.message });
+    });
   } catch (err) {
     next(err);
   }
