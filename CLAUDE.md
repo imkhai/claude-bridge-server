@@ -22,7 +22,8 @@ HTTP Request → Express Route → Job Queue (FIFO, in-memory) → claude -p (sp
 
 - **Entry point:** `server.mjs` — Express app, route mounting, SQLite init, JSON conversation migration, graceful shutdown
 - **Config:** `src/config.mjs` — all via env vars (see Environment Variables below)
-- **Database:** `src/db.mjs` — SQLite via better-sqlite3 at `bridge-data/bridge.db`. Tables: `conversations`, `messages`, `jobs`, `uploaded_files`, `agent_stats`. WAL mode, prepared statement cache, auto-migration from legacy JSON conversations on startup
+- **Database:** `src/db.mjs` — SQLite via better-sqlite3 at `bridge-data/bridge.db`. Tables: `conversations`, `messages`, `jobs`, `uploaded_files`, `agent_stats`, `conversation_summaries`. WAL mode, prepared statement cache, auto-migration from legacy JSON conversations on startup
+- **Summarizer:** `src/summarizer.mjs` — generates compact conversation summaries after agents complete. Spawns a `summarizer` agent (pure text, no tools) to compress conversation history into structured Markdown. Summaries are stored in both SQLite and files (`bridge-data/summaries/`). Loaded and injected as context when users send follow-up messages in existing conversations
 - **Queue:** `src/queue.mjs` — in-memory Map for active jobs, FIFO scheduling, respects MAX_PARALLEL concurrency limit. Completed jobs are persisted to SQLite. Timeline events stored in a 100-entry ring buffer with SSE push to listeners
 - **Runner:** `src/claude-runner.mjs` — spawns `claude -p <prompt> --no-session-persistence`, handles timeout (SIGTERM→SIGKILL after 5s), 10MB buffer limit, real-time progress tracking (output bytes, stderr lines, last activity)
 - **Routes:** `src/routes/*.mjs` — one file per endpoint group
@@ -68,6 +69,8 @@ HTTP Request → Express Route → Job Queue (FIFO, in-memory) → claude -p (sp
 | GET | `/api/chat/files` | List uploaded files |
 | GET | `/api/chat/stream/:conversationId` | SSE for real-time agent updates |
 | GET | `/api/chat/uploads/:filename` | Serve uploaded files |
+| GET | `/api/chat/conversations/:id/summary` | Get conversation summary |
+| POST | `/api/chat/conversations/:id/summary/regenerate` | Force-regenerate summary |
 
 ## Job Lifecycle
 
@@ -143,6 +146,9 @@ All tests are bash scripts using curl + python3 for JSON parsing. Total: 119 ass
 | `MAX_QUEUE_SIZE` | `1000` | Max jobs in queue |
 | `JOB_TTL_MS` | `3600000` | Job time-to-live in memory (1 hour) |
 | `CHAT_WORKING_DIR` | _(WORKSPACE)_ | Working directory for Chat Commander agents (allows operating outside workspace) |
+| `SUMMARY_ENABLED` | `true` | Enable/disable conversation memory summarization |
+| `SUMMARY_MAX_CHARS` | `6000` | Max summary size in characters |
+| `SUMMARY_MAX_TURN_CHARS` | `3000` | Max per-agent output fed to summarizer |
 
 ## Data Directory Layout
 
@@ -152,6 +158,7 @@ bridge-data/
 ├── tasks/           # Saved prompts (task-{id}.md)
 ├── results/         # Claude output (result-{id}.md)
 ├── contexts/        # Temp context files (context-{id}.md)
+├── summaries/       # Conversation summaries (summary-{convId}.md)
 ├── shared/          # Shared documents between agents
 ├── uploads/         # Files uploaded via Chat Commander
 └── conversations/   # Legacy JSON conversation files (migrated to SQLite on startup)
@@ -167,7 +174,8 @@ Accessible at `/chat`. A conversational interface that auto-routes requests to s
 - **Conversation history** — persisted in SQLite (conversations + messages tables)
 - **Real-time updates** — SSE stream per conversation for live agent status and messages
 - **Image analysis** — if images are attached with a bug report, an image-analyzer agent runs first
-- **Agent roles** — built-in role prompts for: architect, frontend-engineer, backend-engineer, integration-engineer, senior-engineer, investigator, qa-reviewer, security-auditor, tech-lead, ui-architect, researcher, documentation-agent, general-agent, image-analyzer
+- **Agent roles** — built-in role prompts for: architect, frontend-engineer, backend-engineer, integration-engineer, senior-engineer, investigator, qa-reviewer, security-auditor, tech-lead, ui-architect, researcher, documentation-agent, general-agent, image-analyzer, summarizer
+- **Conversation memory** — after all agents complete a turn, a `summarizer` agent generates a compact summary of the conversation (what was asked, what was done, files changed, decisions, current state). When a follow-up message is sent in an existing conversation, the summary is loaded and injected into every agent's prompt so they understand the prior context. Summaries stored in SQLite + Markdown files
 
 ## Workflow Rules — ALWAYS FOLLOW
 
