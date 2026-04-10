@@ -198,7 +198,7 @@ function renderFileAttachments(files) {
     const path = f.path || f;
 
     if (isImage) {
-      return `<div class="message-file-thumb"><img src="/api/chat/file/${encodeURIComponent(path)}" alt="${name}" loading="lazy"></div>`;
+      return `<div class="message-file-thumb"><img src="/api/chat/uploads/${encodeURIComponent(typeof path === 'string' ? path.split('/').pop() : path)}" alt="${name}" loading="lazy"></div>`;
     }
     return `
       <div class="message-file-chip">

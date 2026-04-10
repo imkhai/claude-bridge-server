@@ -266,21 +266,18 @@ function connectToStream(conversationId) {
     },
 
     onAgentStart(data) {
-      // Server sends agent-status {agentId, status} — taskId may not be available yet
-      const key = data.taskId || data.agentId;
-      agents.addAgent(key, data.agentId, 'running');
+      // Use agentId as canonical key — taskId isn't available until job completes
+      agents.addAgent(data.agentId, data.agentId, 'running');
       showTyping(true, `${data.agentId} is working...`);
     },
 
     onAgentProgress(data) {
-      const key = data.taskId || data.agentId;
-      agents.updateProgress(key, data);
+      agents.updateProgress(data.agentId, data);
     },
 
     onAgentDone(data) {
       // Server sends agent-message with {id, agentId, content, taskId, duration, status}
-      const key = data.taskId || data.agentId;
-      agents.agentDone(key, data.content);
+      agents.agentDone(data.agentId, data.content);
 
       const msg = {
         id: data.id || `msg-${Date.now()}-${data.agentId}`,
@@ -297,8 +294,7 @@ function connectToStream(conversationId) {
     },
 
     onAgentError(data) {
-      const key = data.taskId || data.agentId;
-      agents.agentError(key, data.error || data.content);
+      agents.agentError(data.agentId, data.error || data.content);
 
       const msg = {
         id: data.id || `msg-${Date.now()}-${data.agentId}`,
@@ -345,9 +341,13 @@ function connectToStream(conversationId) {
     },
 
     onError() {
-      showTyping(false);
-      isWaitingForResponse = false;
-      updateSendButton();
+      // Only reset if SSE connection is permanently closed (CLOSED = 2)
+      // EventSource auto-reconnects, so don't reset on transient errors
+      if (currentSSE && currentSSE.readyState === EventSource.CLOSED) {
+        showTyping(false);
+        isWaitingForResponse = false;
+        updateSendButton();
+      }
     },
   });
 }
