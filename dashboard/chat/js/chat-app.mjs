@@ -215,6 +215,11 @@ async function handleSend() {
     currentConversationId = result.conversationId;
     history.setActive(currentConversationId);
 
+    // Update URL so reload stays on this conversation
+    const url = new URL(window.location);
+    url.searchParams.set('conv', currentConversationId);
+    window.history.replaceState({}, '', url);
+
     // Update conversation in sidebar
     history.upsertConversation({
       id: result.conversationId,
@@ -352,6 +357,11 @@ async function loadConversation(conversationId) {
     currentConversationId = conversationId;
     history.setActive(conversationId);
 
+    // Update URL so reload stays on this conversation
+    const url = new URL(window.location);
+    url.searchParams.set('conv', conversationId);
+    window.history.replaceState({}, '', url);
+
     // Clear messages
     chatMessages.innerHTML = '';
     if (welcomeScreen) welcomeScreen.style.display = 'none';
@@ -378,6 +388,12 @@ async function loadConversation(conversationId) {
 function newConversation() {
   currentConversationId = null;
   history.setActive(null);
+
+  // Clear conv param from URL
+  const url = new URL(window.location);
+  url.searchParams.delete('conv');
+  window.history.replaceState({}, '', url);
+
   chatMessages.innerHTML = '';
   agents.clear();
   upload.clearPending();

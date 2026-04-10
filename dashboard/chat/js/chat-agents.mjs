@@ -16,20 +16,26 @@ export function init(opts) {
   panelEl = document.getElementById('agentPanel');
   contentEl = document.getElementById('agentPanelContent');
 
-  document.getElementById('toggleAgentPanel').addEventListener('click', () => {
-    panelEl.classList.toggle('collapsed');
-  });
+  const toggleBtn = document.getElementById('toggleAgentPanel');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      if (panelEl) panelEl.classList.toggle('collapsed');
+    });
+  }
 
-  document.getElementById('closeAgentPanel').addEventListener('click', () => {
-    panelEl.classList.add('collapsed');
-  });
+  const closeBtn = document.getElementById('closeAgentPanel');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      if (panelEl) panelEl.classList.add('collapsed');
+    });
+  }
 }
 
 /**
  * Show the panel.
  */
 export function show() {
-  panelEl.classList.remove('collapsed');
+  if (panelEl) panelEl.classList.remove('collapsed');
 }
 
 /**
@@ -118,6 +124,7 @@ function render() {
     return;
   }
 
+  if (!contentEl) return;
   contentEl.innerHTML = '';
   for (const [taskId, agent] of agents) {
     const card = createAgentCard(agent);
@@ -126,6 +133,7 @@ function render() {
 }
 
 function renderIdle() {
+  if (!contentEl) return;
   contentEl.innerHTML = `
     <div class="agent-idle">
       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
