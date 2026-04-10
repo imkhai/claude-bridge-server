@@ -114,10 +114,11 @@ function init() {
 
   agents.init({});
 
-  // Load conversations, then auto-open from URL param if present
+  // Load conversations, then restore last active conversation
   history.loadConversations().then(() => {
+    // Check URL param first, then sessionStorage fallback
     const params = new URLSearchParams(window.location.search);
-    const convId = params.get('conv');
+    const convId = params.get('conv') || sessionStorage.getItem('activeConversationId');
     if (convId) {
       loadConversation(convId);
     }
@@ -215,10 +216,11 @@ async function handleSend() {
     currentConversationId = result.conversationId;
     history.setActive(currentConversationId);
 
-    // Update URL so reload stays on this conversation
+    // Persist active conversation for reload
     const url = new URL(window.location);
     url.searchParams.set('conv', currentConversationId);
     window.history.replaceState({}, '', url);
+    sessionStorage.setItem('activeConversationId', currentConversationId);
 
     // Update conversation in sidebar
     history.upsertConversation({
@@ -357,10 +359,11 @@ async function loadConversation(conversationId) {
     currentConversationId = conversationId;
     history.setActive(conversationId);
 
-    // Update URL so reload stays on this conversation
+    // Persist active conversation for reload
     const url = new URL(window.location);
     url.searchParams.set('conv', conversationId);
     window.history.replaceState({}, '', url);
+    sessionStorage.setItem('activeConversationId', conversationId);
 
     // Clear messages
     chatMessages.innerHTML = '';
@@ -389,10 +392,11 @@ function newConversation() {
   currentConversationId = null;
   history.setActive(null);
 
-  // Clear conv param from URL
+  // Clear persisted conversation
   const url = new URL(window.location);
   url.searchParams.delete('conv');
   window.history.replaceState({}, '', url);
+  sessionStorage.removeItem('activeConversationId');
 
   chatMessages.innerHTML = '';
   agents.clear();
