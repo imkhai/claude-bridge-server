@@ -18,6 +18,9 @@ import { cancelRouter } from './src/routes/cancel.mjs';
 import { chainRouter } from './src/routes/chain.mjs';
 import { dashboardRouter } from './src/routes/dashboard-api.mjs';
 import { chatRouter } from './src/routes/chat-api.mjs';
+import { telegramRouter } from './src/routes/telegram-api.mjs';
+import { initTelegram, shutdownTelegram } from './src/telegram.mjs';
+import { initNotifications, shutdownNotifications } from './src/notifications.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -59,6 +62,8 @@ app.use('/ask', taskLimiter);
 app.use('/chain', taskLimiter);
 app.use('/api/chat/send', chatSendLimiter);
 app.use('/api/chat/upload', chatUploadLimiter);
+const telegramWebhookLimiter = rateLimit({ windowMs: 1_000, max: 30, standardHeaders: true, legacyHeaders: false });
+app.use('/api/telegram/webhook', telegramWebhookLimiter);
 
 app.use(askRouter);
 app.use(statusRouter);
@@ -68,6 +73,7 @@ app.use(cancelRouter);
 app.use(chainRouter);
 app.use(dashboardRouter);
 app.use(chatRouter);
+app.use(telegramRouter);
 
 // Global error handler — never expose internal error details
 app.use((err, req, res, next) => {
@@ -88,6 +94,10 @@ async function start() {
     process.exit(1);
   }
 
+  // Initialize Telegram bot and notifications
+  await initTelegram();
+  initNotifications();
+
   app.listen(config.BRIDGE_PORT, config.BIND_HOST, () => {
     logger.info('='.repeat(50));
     logger.info('Claude Bridge Server started');
@@ -100,6 +110,8 @@ async function start() {
     logger.info(`  Log Level:    ${config.LOG_LEVEL}`);
     logger.info(`  Auth:         ${config.API_KEY ? 'enabled' : 'disabled (no API_KEY)'}`);
     logger.info(`  Max Queue:    ${config.MAX_QUEUE_SIZE}`);
+    const tgMode = config.TELEGRAM_BOT_TOKEN ? (config.TELEGRAM_WEBHOOK_URL ? 'enabled (webhook)' : 'enabled (polling)') : 'disabled';
+    logger.info(`  Telegram:     ${tgMode}`);
     logger.info('='.repeat(50));
   });
 
@@ -116,6 +128,8 @@ async function start() {
   process.on('SIGINT', async () => {
     logger.info('Received SIGINT — starting graceful shutdown');
     shuttingDown = true;
+    shutdownNotifications();
+    await shutdownTelegram();
     await queue.shutdown();
     closeDatabase();
     process.exit(0);
@@ -124,6 +138,8 @@ async function start() {
   process.on('SIGTERM', async () => {
     logger.info('Received SIGTERM — starting graceful shutdown');
     shuttingDown = true;
+    shutdownNotifications();
+    await shutdownTelegram();
     await queue.shutdown();
     closeDatabase();
     process.exit(0);

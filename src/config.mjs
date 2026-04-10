@@ -21,4 +21,11 @@ export const config = {
   SUMMARY_ENABLED: process.env.SUMMARY_ENABLED !== 'false',
   SUMMARY_MAX_CHARS: parseInt(process.env.SUMMARY_MAX_CHARS, 10) || 6000,
   SUMMARY_MAX_TURN_CHARS: parseInt(process.env.SUMMARY_MAX_TURN_CHARS, 10) || 3000,
+
+  // Telegram Bot
+  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
+  TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
+  TELEGRAM_WEBHOOK_URL: process.env.TELEGRAM_WEBHOOK_URL || '',
+  TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET || '',
+  TELEGRAM_NOTIFY_EVENTS: process.env.TELEGRAM_NOTIFY_EVENTS || 'task_done,task_error,task_timeout',
 };
