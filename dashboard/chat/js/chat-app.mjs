@@ -381,6 +381,9 @@ async function loadConversation(conversationId) {
       }
     }
     scrollToBottom();
+
+    // Connect SSE so any in-flight agent results auto-appear
+    connectToStream(conversationId);
   } catch (err) {
     console.error('Failed to load conversation:', err);
     appendSystemMessage(`Failed to load conversation: ${err.message}`);
