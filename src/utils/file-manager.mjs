@@ -22,27 +22,3 @@ export async function saveContext(taskId, context) {
   return filePath;
 }
 
-export async function saveResult(taskId, agentId, prompt, result, duration) {
-  const filePath = join(config.WORKSPACE, 'results', `result-${taskId}.md`);
-  const promptPreview = prompt.slice(0, 200);
-  const completedAt = new Date().toISOString();
-
-  const content = `# Result: ${taskId}
-
-**Agent:** ${agentId}
-**Prompt:** ${promptPreview}
-**Completed:** ${completedAt}
-**Duration:** ${duration}ms
-
----
-
-${result}
-`;
-
-  await writeFile(filePath, content, 'utf-8');
-  return filePath;
-}
-
-export function resultPath(taskId) {
-  return join(config.WORKSPACE, 'results', `result-${taskId}.md`);
-}

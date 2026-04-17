@@ -1,7 +1,6 @@
 import { Router } from 'express';
-import { queue, getTimeline, getAgentSummaries, onTimelineEvent, getCompletedJobs, getPerformanceStats } from '../queue.mjs';
+import { queue, getTimeline, getAgentSummaries, onTimelineEvent, getCompletedJobs, getPerformanceStats, getAllProgress } from '../queue.mjs';
 import { getChains } from './chain.mjs';
-import { getAllProgress } from '../claude-runner.mjs';
 import { logger } from '../utils/logger.mjs';
 
 export const dashboardRouter = Router();
