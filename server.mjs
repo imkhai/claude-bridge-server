@@ -5,7 +5,7 @@ import { dirname, join } from 'path';
 import { config } from './src/config.mjs';
 import { logger } from './src/utils/logger.mjs';
 import { ensureDirectories } from './src/utils/file-manager.mjs';
-import { queue } from './src/queue.mjs';
+import { queue, reconcileOrphans } from './src/queue.mjs';
 import { checkClaudeCli } from './src/claude-runner.mjs';
 import { initDatabase, migrateJsonConversations, closeDatabase } from './src/db.mjs';
 import { authMiddleware } from './src/middleware/auth.mjs';
@@ -97,6 +97,8 @@ async function start() {
   // Initialize Telegram bot and notifications
   await initTelegram();
   initNotifications();
+
+  await reconcileOrphans();
 
   app.listen(config.BRIDGE_PORT, config.BIND_HOST, () => {
     logger.info('='.repeat(50));

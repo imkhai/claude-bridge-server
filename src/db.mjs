@@ -18,8 +18,24 @@ export function initDatabase() {
   db.pragma('foreign_keys = ON');
 
   createTables();
+  migrateJobsTable();
   logger.info(`SQLite database initialized at ${dbPath}`);
   return db;
+}
+
+function migrateJobsTable() {
+  const cols = new Set(db.prepare('PRAGMA table_info(jobs)').all().map((c) => c.name));
+  const adds = [
+    { name: 'pid', type: 'INTEGER' },
+    { name: 'output_path', type: 'TEXT' },
+    { name: 'error_path', type: 'TEXT' },
+  ];
+  for (const { name, type } of adds) {
+    if (!cols.has(name)) {
+      db.exec(`ALTER TABLE jobs ADD COLUMN ${name} ${type}`);
+      logger.info(`Migrated jobs table: added column ${name} ${type}`);
+    }
+  }
 }
 
 function createTables() {
@@ -250,12 +266,13 @@ export function deleteSummary(conversationId) {
 
 export function saveJob(job) {
   const upsert = stmt('upsertJob',
-    `INSERT INTO jobs (id, agent_id, status, prompt, result, error, working_dir, created_at, started_at, finished_at, duration, exit_code, result_file)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO jobs (id, agent_id, status, prompt, result, error, working_dir, created_at, started_at, finished_at, duration, exit_code, result_file, pid, output_path, error_path)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        status = excluded.status, result = excluded.result, error = excluded.error,
        started_at = excluded.started_at, finished_at = excluded.finished_at,
-       duration = excluded.duration, exit_code = excluded.exit_code, result_file = excluded.result_file`
+       duration = excluded.duration, exit_code = excluded.exit_code, result_file = excluded.result_file,
+       pid = excluded.pid, output_path = excluded.output_path, error_path = excluded.error_path`
   );
 
   upsert.run(
@@ -272,10 +289,23 @@ export function saveJob(job) {
     job.duration || null,
     job.exitCode ?? null,
     job.resultFile || null,
+    job.pid ?? null,
+    job.outputPath || null,
+    job.errorPath || null,
   );
 
   // Update agent_stats
   updateAgentStats(job);
+}
+
+export function getRunningJobs() {
+  return stmt('getRunning',
+    `SELECT id AS taskId, agent_id AS agentId, status, prompt, working_dir AS workingDir,
+            created_at AS createdAt, started_at AS startedAt, pid,
+            output_path AS outputPath, error_path AS errorPath, result_file AS resultFile
+     FROM jobs
+     WHERE status = 'running'`
+  ).all();
 }
 
 function updateAgentStats(job) {

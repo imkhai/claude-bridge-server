@@ -1,6 +1,5 @@
 import { Router } from 'express';
-import { queue } from '../queue.mjs';
-import { getProgress, getAllProgress } from '../claude-runner.mjs';
+import { queue, getJobProgress, getAllProgress } from '../queue.mjs';
 
 export const statusRouter = Router();
 
@@ -11,7 +10,7 @@ statusRouter.get('/status/:taskId', (req, res) => {
     return res.status(404).json({ error: 'Task not found' });
   }
 
-  const progress = getProgress(job.taskId);
+  const progress = getJobProgress(job.taskId);
 
   res.json({
     taskId: job.taskId,
@@ -26,6 +25,7 @@ statusRouter.get('/status/:taskId', (req, res) => {
     resultFile: job.resultFile,
     progress: progress ? {
       outputBytes: progress.outputBytes,
+      stderrBytes: progress.stderrBytes,
       elapsed: Math.floor((Date.now() - progress.startedAt) / 1000),
       lastActivity: Math.floor((Date.now() - progress.lastActivity) / 1000),
       recentStderr: progress.stderrLines,
@@ -48,6 +48,7 @@ statusRouter.get('/progress', (req, res) => {
       startedAt: job.startedAt,
       progress: prog ? {
         outputBytes: prog.outputBytes,
+        stderrBytes: prog.stderrBytes,
         elapsed: Math.floor((Date.now() - prog.startedAt) / 1000),
         lastActivityAgo: Math.floor((Date.now() - prog.lastActivity) / 1000),
         recentStderr: prog.stderrLines,
